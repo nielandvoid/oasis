@@ -197,7 +197,7 @@ async function handleApprove(interaction) {
       } else {
         publicEmbed.addFields({ name: 'Attachment', value: `[Download ${attachment.name}](${attachment.url})`, inline: true });
       }
-      filesOption.push(attachment);
+      filesOption.push({ attachment: attachment.url, name: attachment.name });
     }
   }
 
