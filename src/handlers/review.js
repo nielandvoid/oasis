@@ -79,6 +79,13 @@ async function handleDescSubmit(interaction, type) {
     return;
   }
 
+  // Acknowledge the modal interaction immediately so the popup closes and doesn't timeout
+  await interaction.update({ 
+    content: 'Thank you! Your resource has been submitted to the moderators for review.', 
+    embeds: [],
+    components: []
+  });
+
   const reviewEmbed = new EmbedBuilder()
     .setTitle('New Resource Submission')
     .setColor('#3498db')
@@ -88,24 +95,37 @@ async function handleDescSubmit(interaction, type) {
       { name: 'Description', value: description, inline: false }
     )
     .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
-    .setFooter({ text: `Oasis • Type: ${type} • Submitter: ${interaction.user.id}` })
     .setTimestamp();
 
   let url = null;
   let file = null;
+  let fileSize = 0;
 
   if (type === 'link') {
     url = originalEmbed.fields.find(f => f.name === 'URL').value;
     reviewEmbed.addFields({ name: 'URL / Link', value: url, inline: false });
+    reviewEmbed.setFooter({ text: `Oasis • Type: ${type} • Submitter: ${interaction.user.id}` });
   } else if (type === 'file') {
     const fileNameField = originalEmbed.fields.find(f => f.name === 'File Name');
     const fileUrlField = originalEmbed.fields.find(f => f.name === 'File URL');
-    if (fileNameField && fileUrlField) {
+    const fileSizeField = originalEmbed.fields.find(f => f.name === 'File Size');
+
+    if (fileNameField && fileUrlField && fileSizeField) {
+      fileSize = parseInt(fileSizeField.value) || 0;
       file = {
         name: fileNameField.value,
-        url: fileUrlField.value
+        url: fileUrlField.value,
+        size: fileSize
       };
-      reviewEmbed.addFields({ name: 'File Name', value: file.name, inline: false });
+      
+      reviewEmbed.addFields(
+        { name: 'File Name', value: file.name, inline: false },
+        { name: 'File URL', value: file.url, inline: false }
+      );
+      
+      reviewEmbed.setFooter({ 
+        text: `Oasis • Type: ${type} • Submitter: ${interaction.user.id} • Size: ${fileSize}` 
+      });
     }
   }
 
@@ -120,14 +140,11 @@ async function handleDescSubmit(interaction, type) {
       .setStyle(ButtonStyle.Danger)
   );
 
-  await interaction.update({ 
-    content: 'Thank you! Your resource has been submitted to the moderators for review.', 
-    embeds: [],
-    components: []
-  });
-
   const messageOptions = { embeds: [reviewEmbed], components: [row] };
-  if (type === 'file' && file) {
+  
+  // Only upload the file to the review channel if it is under the 10MB limit
+  const isLargeFile = type === 'file' && fileSize > 10 * 1024 * 1024;
+  if (type === 'file' && file && !isLargeFile) {
     messageOptions.files = [{ attachment: file.url, name: file.name }];
   }
 
@@ -155,9 +172,11 @@ async function handleApprove(interaction) {
 
   const typeMatch = footerText.match(/Type: (link|file)/);
   const submitterMatch = footerText.match(/Submitter: (\d+)/);
+  const sizeMatch = footerText.match(/Size: (\d+)/);
 
   const type = typeMatch ? typeMatch[1] : 'link';
   const submitterId = submitterMatch ? submitterMatch[1] : null;
+  const fileSize = sizeMatch ? parseInt(sizeMatch[1]) : 0;
 
   const title = originalEmbed.fields.find(f => f.name === 'Title').value;
   const description = originalEmbed.fields.find(f => f.name === 'Description').value;
@@ -181,23 +200,35 @@ async function handleApprove(interaction) {
     .setFooter({ text: `Published via Oasis` })
     .setTimestamp();
 
-  let attachment = null;
   const filesOption = [];
+  const isLargeFile = type === 'file' && fileSize > 10 * 1024 * 1024;
 
   if (type === 'link') {
     const url = originalEmbed.fields.find(f => f.name === 'URL / Link').value;
     publicEmbed.setURL(url);
     publicEmbed.addFields({ name: 'Link', value: `[Visit Resource](${url})`, inline: true });
   } else if (type === 'file') {
-    attachment = interaction.message.attachments.first();
-    if (attachment) {
-      const isImage = attachment.contentType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(attachment.name);
-      if (isImage) {
-        publicEmbed.setImage(`attachment://${attachment.name}`);
+    const fileName = originalEmbed.fields.find(f => f.name === 'File Name').value;
+    const fileUrl = originalEmbed.fields.find(f => f.name === 'File URL').value;
+
+    if (isLargeFile) {
+      // For large files, do not re-upload. Just link directly to the Discord hosted URL.
+      publicEmbed.addFields({ name: 'Attachment (Large File)', value: `[Download ${fileName}](${fileUrl})`, inline: true });
+    } else {
+      // Re-upload small files
+      const attachment = interaction.message.attachments.first();
+      if (attachment) {
+        const isImage = attachment.contentType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(attachment.name);
+        if (isImage) {
+          publicEmbed.setImage(`attachment://${attachment.name}`);
+        } else {
+          publicEmbed.addFields({ name: 'Attachment', value: `[Download ${attachment.name}](${attachment.url})`, inline: true });
+        }
+        filesOption.push({ attachment: attachment.url, name: attachment.name });
       } else {
-        publicEmbed.addFields({ name: 'Attachment', value: `[Download ${attachment.name}](${attachment.url})`, inline: true });
+        // Fallback to link if download fails
+        publicEmbed.addFields({ name: 'Attachment', value: `[Download ${fileName}](${fileUrl})`, inline: true });
       }
-      filesOption.push({ attachment: attachment.url, name: attachment.name });
     }
   }
 
@@ -213,7 +244,7 @@ async function handleApprove(interaction) {
         message: messagePayload
       });
     } else {
-      await publicChannel.send({ embeds: [publicEmbed] });
+      await publicChannel.send(messagePayload);
     }
   } catch (error) {
     console.error('Error publishing resource:', error);
@@ -232,6 +263,10 @@ async function handleApprove(interaction) {
     if (type === 'link') {
       const url = originalEmbed.fields.find(f => f.name === 'URL / Link').value;
       dmEmbed.addFields({ name: 'Link', value: url });
+    } else if (type === 'file') {
+      const fileName = originalEmbed.fields.find(f => f.name === 'File Name').value;
+      const fileUrl = originalEmbed.fields.find(f => f.name === 'File URL').value;
+      dmEmbed.addFields({ name: 'Attachment', value: `[Download ${fileName}](${fileUrl})` });
     }
 
     await submitter.send({ embeds: [dmEmbed] }).catch(() => console.log(`Could not DM user ${submitterId}`));

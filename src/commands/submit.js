@@ -69,7 +69,8 @@ export async function execute(interaction) {
       .setDescription('Your submission is almost ready. Click below to add a description (markdown and linebreaks supported).')
       .addFields(
         { name: 'File Name', value: file.name },
-        { name: 'File URL', value: file.url }
+        { name: 'File URL', value: file.url },
+        { name: 'File Size', value: file.size.toString() }
       );
 
     const row = new ActionRowBuilder().addComponents(
