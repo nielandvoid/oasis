@@ -181,7 +181,7 @@ async function handleApprove(interaction) {
     if (attachment) {
       const isImage = attachment.contentType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(attachment.name);
       if (isImage) {
-        publicEmbed.setImage(attachment.url);
+        publicEmbed.setImage(`attachment://${attachment.name}`);
       } else {
         publicEmbed.addFields({ name: 'Attachment', value: `[Download ${attachment.name}](${attachment.url})`, inline: true });
       }
