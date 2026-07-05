@@ -6,7 +6,8 @@ import {
   ModalBuilder, 
   TextInputBuilder, 
   TextInputStyle,
-  PermissionFlagsBits 
+  PermissionFlagsBits,
+  MessageFlags
 } from 'discord.js';
 
 export async function handleInteraction(interaction) {
@@ -74,12 +75,11 @@ async function handleDescSubmit(interaction, type) {
   if (!reviewChannel) {
     await interaction.reply({ 
       content: 'Error: The moderator review channel is not configured correctly. Please contact an administrator.', 
-      ephemeral: true 
+      flags: MessageFlags.Ephemeral 
     });
     return;
   }
 
-  // Acknowledge the modal interaction immediately so the popup closes and doesn't timeout
   await interaction.update({ 
     content: 'Thank you! Your resource has been submitted to the moderators for review.', 
     embeds: [],
@@ -142,7 +142,6 @@ async function handleDescSubmit(interaction, type) {
 
   const messageOptions = { embeds: [reviewEmbed], components: [row] };
   
-  // Only upload the file to the review channel if it is under the 10MB limit
   const isLargeFile = type === 'file' && fileSize > 10 * 1024 * 1024;
   if (type === 'file' && file && !isLargeFile) {
     messageOptions.files = [{ attachment: file.url, name: file.name }];
@@ -154,14 +153,14 @@ async function handleDescSubmit(interaction, type) {
     console.error('Error sending submission to review channel:', error);
     await interaction.followUp({ 
       content: 'Error: Failed to deliver your submission to the moderators. Please try again.', 
-      ephemeral: true 
+      flags: MessageFlags.Ephemeral 
     }).catch(() => null);
   }
 }
 
 async function handleApprove(interaction) {
   if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
-    await interaction.reply({ content: 'You do not have permission to review resources.', ephemeral: true });
+    await interaction.reply({ content: 'You do not have permission to review resources.', flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -186,7 +185,7 @@ async function handleApprove(interaction) {
   const publicChannel = await interaction.client.channels.fetch(publicChannelId).catch(() => null);
 
   if (!publicChannel) {
-    await interaction.followUp({ content: 'Error: Public channel not found. Could not publish.', ephemeral: true });
+    await interaction.followUp({ content: 'Error: Public channel not found. Could not publish.', flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -212,10 +211,8 @@ async function handleApprove(interaction) {
     const fileUrl = originalEmbed.fields.find(f => f.name === 'File URL').value;
 
     if (isLargeFile) {
-      // For large files, do not re-upload. Just link directly to the Discord hosted URL.
       publicEmbed.addFields({ name: 'Attachment (Large File)', value: `[Download ${fileName}](${fileUrl})`, inline: true });
     } else {
-      // Re-upload small files
       const attachment = interaction.message.attachments.first();
       if (attachment) {
         const isImage = attachment.contentType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(attachment.name);
@@ -226,7 +223,6 @@ async function handleApprove(interaction) {
         }
         filesOption.push({ attachment: attachment.url, name: attachment.name });
       } else {
-        // Fallback to link if download fails
         publicEmbed.addFields({ name: 'Attachment', value: `[Download ${fileName}](${fileUrl})`, inline: true });
       }
     }
@@ -248,7 +244,7 @@ async function handleApprove(interaction) {
     }
   } catch (error) {
     console.error('Error publishing resource:', error);
-    await interaction.followUp({ content: 'Failed to publish to the public channel. Check bot permissions.', ephemeral: true });
+    await interaction.followUp({ content: 'Failed to publish to the public channel. Check bot permissions.', flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -286,7 +282,7 @@ async function handleApprove(interaction) {
 
 async function handleRejectClick(interaction) {
   if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
-    await interaction.reply({ content: 'You do not have permission to review resources.', ephemeral: true });
+    await interaction.reply({ content: 'You do not have permission to review resources.', flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -316,7 +312,7 @@ async function handleRejectSubmit(interaction, messageId) {
   
   const originalMessage = await reviewChannel.messages.fetch(messageId).catch(() => null);
   if (!originalMessage) {
-    await interaction.followUp({ content: 'Original review message could not be found.', ephemeral: true });
+    await interaction.followUp({ content: 'Original review message could not be found.', flags: MessageFlags.Ephemeral });
     return;
   }
 

@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, REST, Routes } from 'discord.js';
+import { Client, GatewayIntentBits, REST, Routes, Events, MessageFlags } from 'discord.js';
 import dotenv from 'dotenv';
 import { data as submitCommand, execute as executeSubmit } from './commands/submit.js';
 import { handleInteraction } from './handlers/review.js';
@@ -21,7 +21,7 @@ const client = new Client({
   ]
 });
 
-client.once('ready', async () => {
+client.once(Events.ClientReady, async () => {
   console.log(`Logged in as ${client.user.tag}!`);
 
   const rest = new REST({ version: '10' }).setToken(token);
@@ -64,7 +64,7 @@ client.on('interactionCreate', async (interaction) => {
     console.error('Error handling interaction:', error);
     
     if (interaction.isRepliable() || interaction.deferred) {
-      const msg = { content: 'An error occurred while executing this action.', ephemeral: true };
+      const msg = { content: 'An error occurred while executing this action.', flags: MessageFlags.Ephemeral };
       if (interaction.deferred) {
         await interaction.followUp(msg);
       } else {

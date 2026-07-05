@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
 
 export const data = new SlashCommandBuilder()
   .setName('submit')
@@ -37,7 +37,7 @@ export async function execute(interaction) {
     if (!urlRegex.test(url)) {
       await interaction.reply({ 
         content: 'Error: Please provide a valid URL link (e.g., https://example.com).', 
-        ephemeral: true 
+        flags: MessageFlags.Ephemeral 
       });
       return;
     }
@@ -59,7 +59,7 @@ export async function execute(interaction) {
         .setStyle(ButtonStyle.Primary)
     );
 
-    await interaction.reply({ embeds: [draftEmbed], components: [row], ephemeral: true });
+    await interaction.reply({ embeds: [draftEmbed], components: [row], flags: MessageFlags.Ephemeral });
   } else if (subcommand === 'file') {
     const file = interaction.options.getAttachment('file');
 
@@ -83,7 +83,7 @@ export async function execute(interaction) {
     await interaction.reply({ 
       embeds: [draftEmbed], 
       components: [row], 
-      ephemeral: true 
+      flags: MessageFlags.Ephemeral 
     });
   }
 }
