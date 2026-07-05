@@ -1,9 +1,9 @@
-import { Client, GatewayIntentBits, REST, Routes, Events, MessageFlags } from 'discord.js';
+import { Client, GatewayIntentBits, REST, Routes, Events, MessageFlags, ChannelType } from 'discord.js';
 import dotenv from 'dotenv';
 import { data as submitCommand, execute as executeSubmit } from './commands/submit.js';
 import { data as configureCommand, execute as executeConfigure } from './commands/configure.js';
 import { handleInteraction } from './handlers/review.js';
-import { connectDatabase } from './database.js';
+import { connectDatabase, getGuildConfig } from './database.js';
 import http from 'http';
 
 dotenv.config();
@@ -20,7 +20,8 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-  ]
+  ],
+  presence: { status: 'idle' }
 });
 
 client.once(Events.ClientReady, async () => {
@@ -47,6 +48,25 @@ client.once(Events.ClientReady, async () => {
 
 client.on('interactionCreate', async (interaction) => {
   try {
+    if (interaction.isAutocomplete()) {
+      if (interaction.commandName === 'submit') {
+        const focusedValue = interaction.options.getFocused();
+        const config = await getGuildConfig(interaction.guildId);
+        if (!config || !config.publicChannelId) {
+          return interaction.respond([]);
+        }
+        const channel = await interaction.guild.channels.fetch(config.publicChannelId).catch(() => null);
+        if (channel && channel.type === ChannelType.GuildForum) {
+          const tags = channel.availableTags || [];
+          const filtered = tags.filter(tag => tag.name.toLowerCase().includes(focusedValue.toLowerCase()));
+          return interaction.respond(
+            filtered.slice(0, 25).map(tag => ({ name: tag.name, value: tag.id }))
+          );
+        }
+      }
+      return interaction.respond([]);
+    }
+
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === 'submit') {
         await executeSubmit(interaction);
@@ -75,7 +95,7 @@ client.on('interactionCreate', async (interaction) => {
 client.login(token);
 
 // Keep-alive HTTP server to prevent hibernation
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || process.env.SERVER_PORT || 3000;
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Oasis Bot is online!\n');
