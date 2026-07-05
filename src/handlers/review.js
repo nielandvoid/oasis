@@ -11,27 +11,63 @@ import {
 
 export async function handleInteraction(interaction) {
   if (interaction.isButton()) {
-    const action = interaction.customId;
+    const [action, type] = interaction.customId.split(':');
     
-    if (action === 'approve') {
+    if (action === 'write-desc') {
+      await handleWriteDescClick(interaction, type);
+      return;
+    }
+    
+    if (interaction.customId === 'approve') {
       await handleApprove(interaction);
       return;
     }
     
-    if (action === 'reject') {
+    if (interaction.customId === 'reject') {
       await handleRejectClick(interaction);
       return;
     }
   }
 
-  if (interaction.isModalSubmit() && interaction.customId.startsWith('reject-modal:')) {
-    const [, messageId] = interaction.customId.split(':');
-    await handleRejectSubmit(interaction, messageId);
-    return;
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId.startsWith('desc-modal:')) {
+      const [, type] = interaction.customId.split(':');
+      await handleDescSubmit(interaction, type);
+      return;
+    }
+    
+    if (interaction.customId.startsWith('reject-modal:')) {
+      const [, messageId] = interaction.customId.split(':');
+      await handleRejectSubmit(interaction, messageId);
+      return;
+    }
   }
 }
 
-export async function submitResource(interaction, { type, title, description, url, file }) {
+async function handleWriteDescClick(interaction, type) {
+  const modal = new ModalBuilder()
+    .setCustomId(`desc-modal:${type}`)
+    .setTitle('Resource Description');
+
+  const descInput = new TextInputBuilder()
+    .setCustomId('resource-desc')
+    .setLabel('Description')
+    .setStyle(TextInputStyle.Paragraph)
+    .setPlaceholder('Enter details about this resource...\nMarkdown, linebreaks, and bullet points are fully supported.')
+    .setRequired(true)
+    .setMaxLength(1000);
+
+  const row = new ActionRowBuilder().addComponents(descInput);
+  modal.addComponents(row);
+
+  await interaction.showModal(modal);
+}
+
+async function handleDescSubmit(interaction, type) {
+  const description = interaction.fields.getTextInputValue('resource-desc');
+  const originalEmbed = interaction.message.embeds[0];
+  const title = originalEmbed.title.replace('Draft: ', '');
+
   const reviewChannelId = process.env.REVIEW_CHANNEL_ID;
   const reviewChannel = await interaction.client.channels.fetch(reviewChannelId).catch(() => null);
 
@@ -55,10 +91,17 @@ export async function submitResource(interaction, { type, title, description, ur
     .setFooter({ text: `Oasis • Type: ${type} • Submitter: ${interaction.user.id}` })
     .setTimestamp();
 
+  let url = null;
+  let file = null;
+
   if (type === 'link') {
+    url = originalEmbed.fields.find(f => f.name === 'URL').value;
     reviewEmbed.addFields({ name: 'URL / Link', value: url, inline: false });
   } else if (type === 'file') {
-    reviewEmbed.addFields({ name: 'File Name', value: file.name, inline: false });
+    file = interaction.message.attachments.first();
+    if (file) {
+      reviewEmbed.addFields({ name: 'File Name', value: file.name, inline: false });
+    }
   }
 
   const row = new ActionRowBuilder().addComponents(
@@ -73,15 +116,17 @@ export async function submitResource(interaction, { type, title, description, ur
   );
 
   const messageOptions = { embeds: [reviewEmbed], components: [row] };
-  if (type === 'file') {
+  if (type === 'file' && file) {
     messageOptions.files = [file];
   }
 
   await reviewChannel.send(messageOptions);
 
-  await interaction.reply({ 
+  await interaction.update({ 
     content: 'Thank you! Your resource has been submitted to the moderators for review.', 
-    ephemeral: true 
+    embeds: [],
+    components: [],
+    files: []
   });
 }
 
@@ -156,7 +201,7 @@ async function handleApprove(interaction) {
         message: messagePayload
       });
     } else {
-      await publicChannel.send(messagePayload);
+      await publicChannel.send({ embeds: [publicEmbed] });
     }
   } catch (error) {
     console.error('Error publishing resource:', error);

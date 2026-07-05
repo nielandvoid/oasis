@@ -1,5 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
-import { submitResource } from '../handlers/review.js';
+import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 
 export const data = new SlashCommandBuilder()
   .setName('submit')
@@ -12,9 +11,6 @@ export const data = new SlashCommandBuilder()
         option.setName('title').setDescription('The title of the resource').setRequired(true).setMaxLength(100)
       )
       .addStringOption(option =>
-        option.setName('description').setDescription('Describe what this resource is').setRequired(true).setMaxLength(1000)
-      )
-      .addStringOption(option =>
         option.setName('url').setDescription('The URL link of the resource').setRequired(true)
       )
   )
@@ -25,9 +21,6 @@ export const data = new SlashCommandBuilder()
       .addStringOption(option =>
         option.setName('title').setDescription('The title of the resource').setRequired(true).setMaxLength(100)
       )
-      .addStringOption(option =>
-        option.setName('description').setDescription('Describe what this resource is').setRequired(true).setMaxLength(1000)
-      )
       .addAttachmentOption(option =>
         option.setName('file').setDescription('Upload the file/attachment').setRequired(true)
       )
@@ -36,7 +29,6 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction) {
   const subcommand = interaction.options.getSubcommand();
   const title = interaction.options.getString('title');
-  const description = interaction.options.getString('description');
 
   if (subcommand === 'link') {
     let url = interaction.options.getString('url').trim();
@@ -54,9 +46,41 @@ export async function execute(interaction) {
       url = 'https://' + url;
     }
 
-    await submitResource(interaction, { type: 'link', title, description, url });
+    const draftEmbed = new EmbedBuilder()
+      .setTitle(`Draft: ${title}`)
+      .setColor('#3498db')
+      .setDescription('Your submission is almost ready. Click below to add a description (markdown and linebreaks supported).')
+      .addFields({ name: 'URL', value: url });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('write-desc:link')
+        .setLabel('Write Description')
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    await interaction.reply({ embeds: [draftEmbed], components: [row], ephemeral: true });
   } else if (subcommand === 'file') {
     const file = interaction.options.getAttachment('file');
-    await submitResource(interaction, { type: 'file', title, description, file });
+
+    const draftEmbed = new EmbedBuilder()
+      .setTitle(`Draft: ${title}`)
+      .setColor('#3498db')
+      .setDescription('Your submission is almost ready. Click below to add a description (markdown and linebreaks supported).')
+      .addFields({ name: 'File Name', value: file.name });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('write-desc:file')
+        .setLabel('Write Description')
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    await interaction.reply({ 
+      embeds: [draftEmbed], 
+      components: [row], 
+      files: [file], 
+      ephemeral: true 
+    });
   }
 }
