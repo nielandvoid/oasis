@@ -7,8 +7,10 @@ import {
   TextInputBuilder, 
   TextInputStyle,
   PermissionFlagsBits,
-  MessageFlags
+  MessageFlags,
+  ChannelType
 } from 'discord.js';
+import { getGuildConfig } from '../database.js';
 
 export async function handleInteraction(interaction) {
   if (interaction.isButton()) {
@@ -69,8 +71,9 @@ async function handleDescSubmit(interaction, type) {
   const originalEmbed = interaction.message.embeds[0];
   const title = originalEmbed.title.replace('Draft: ', '');
 
-  const reviewChannelId = process.env.REVIEW_CHANNEL_ID;
-  const reviewChannel = await interaction.client.channels.fetch(reviewChannelId).catch(() => null);
+  const config = await getGuildConfig(interaction.guildId);
+  const reviewChannelId = config?.reviewChannelId;
+  const reviewChannel = reviewChannelId ? await interaction.client.channels.fetch(reviewChannelId).catch(() => null) : null;
 
   if (!reviewChannel) {
     await interaction.reply({ 
@@ -180,14 +183,16 @@ async function handleApprove(interaction) {
   const title = originalEmbed.fields.find(f => f.name === 'Title').value;
   const description = originalEmbed.fields.find(f => f.name === 'Description').value;
 
-  const publicChannelId = process.env.PUBLIC_CHANNEL_ID;
-  const isForum = process.env.IS_FORUM === 'true';
-  const publicChannel = await interaction.client.channels.fetch(publicChannelId).catch(() => null);
+  const config = await getGuildConfig(interaction.guildId);
+  const publicChannelId = config?.publicChannelId;
+  const publicChannel = publicChannelId ? await interaction.client.channels.fetch(publicChannelId).catch(() => null) : null;
 
   if (!publicChannel) {
     await interaction.followUp({ content: 'Error: Public channel not found. Could not publish.', flags: MessageFlags.Ephemeral });
     return;
   }
+
+  const isForum = publicChannel.type === ChannelType.GuildForum;
 
   const publicEmbed = new EmbedBuilder()
     .setTitle(title)

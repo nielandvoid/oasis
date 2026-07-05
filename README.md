@@ -1,18 +1,20 @@
 # Oasis
-a simple resource curation bot for Discord. members submit link/file -> mods approve/reject -> posts to text/forum channel.
+a simple, multi-server resource curation bot for Discord. members submit link/file -> mods approve/reject -> posts to text/forum channel.
 
-built with node and discord.js.
+built with node, discord.js, and mongodb.
 
 ## features
 - `/submit link` & `/submit file` subcommands
 - modal description box (supports linebreaks & md)
 - auto-bypasses 10mb bot upload limit (links directly to cdn if >10mb)
 - mod approval panel with buttons (approve/reject reason)
+- multi-server configuration (`/configure` command for admins)
 - zero deprecation warnings
 
 ## prerequisites
-* **node.js** (v16.x or higher recommended)
+* **node.js** (v18.x or higher recommended)
 * a discord bot token (with **Server Members Intent** and **Message Content Intent** enabled)
+* a mongodb atlas database connection string
 
 ## self-host
 1. clone the repo
@@ -20,16 +22,20 @@ built with node and discord.js.
    ```env
    DISCORD_TOKEN=
    CLIENT_ID=
-   GUILD_ID=
-   REVIEW_CHANNEL_ID=
-   PUBLIC_CHANNEL_ID=
-   IS_FORUM=false
+   MONGODB_URI=
    ```
 3. run:
    ```bash
    npm i
-   node src/index.js
+   node index.js
    ```
+
+## configure in discord
+1. invite the bot to your server
+2. run admin setup commands:
+   `/configure review-channel channel:#moderator-review`
+   `/configure public-channel channel:#public-resources`
+   `/configure view`
 
 ## license
 mit

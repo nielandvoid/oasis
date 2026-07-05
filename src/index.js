@@ -1,13 +1,15 @@
 import { Client, GatewayIntentBits, REST, Routes, Events, MessageFlags } from 'discord.js';
 import dotenv from 'dotenv';
 import { data as submitCommand, execute as executeSubmit } from './commands/submit.js';
+import { data as configureCommand, execute as executeConfigure } from './commands/configure.js';
 import { handleInteraction } from './handlers/review.js';
+import { connectDatabase } from './database.js';
+import http from 'http';
 
 dotenv.config();
 
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.CLIENT_ID;
-const guildId = process.env.GUILD_ID;
 
 if (!token || !clientId) {
   console.error('Error: DISCORD_TOKEN and CLIENT_ID must be set in your .env file.');
@@ -23,27 +25,21 @@ const client = new Client({
 
 client.once(Events.ClientReady, async () => {
   console.log(`Logged in as ${client.user.tag}!`);
+  
+  // Establish database connection
+  await connectDatabase();
 
   const rest = new REST({ version: '10' }).setToken(token);
 
   try {
-    const commands = [submitCommand.toJSON()];
+    const commands = [submitCommand.toJSON(), configureCommand.toJSON()];
 
-    if (guildId) {
-      console.log(`Registering guild commands for server ID: ${guildId}...`);
-      await rest.put(
-        Routes.applicationGuildCommands(clientId, guildId),
-        { body: commands }
-      );
-      console.log('Guild commands registered successfully (instant propagation).');
-    } else {
-      console.log('Registering global commands...');
-      await rest.put(
-        Routes.applicationCommands(clientId),
-        { body: commands }
-      );
-      console.log('Global commands registered successfully (may take up to 2-3 minutes).');
-    }
+    console.log('Registering global slash commands...');
+    await rest.put(
+      Routes.applicationCommands(clientId),
+      { body: commands }
+    );
+    console.log('Global slash commands registered successfully.');
   } catch (error) {
     console.error('Error registering slash commands:', error);
   }
@@ -54,6 +50,8 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === 'submit') {
         await executeSubmit(interaction);
+      } else if (interaction.commandName === 'configure') {
+        await executeConfigure(interaction);
       }
       return;
     }
@@ -75,3 +73,12 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 client.login(token);
+
+// Keep-alive HTTP server to prevent hibernation
+const port = process.env.PORT || 3000;
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Oasis Bot is online!\n');
+}).listen(port, '0.0.0.0', () => {
+  console.log(`Keep-alive web server is running on port ${port}`);
+});

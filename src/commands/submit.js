@@ -1,4 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
+import { getGuildConfig } from '../database.js';
 
 export const data = new SlashCommandBuilder()
   .setName('submit')
@@ -27,6 +28,17 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction) {
+  const guildId = interaction.guildId;
+  const config = await getGuildConfig(guildId);
+
+  if (!config || !config.reviewChannelId || !config.publicChannelId) {
+    await interaction.reply({
+      content: 'Error: Oasis has not been configured on this server yet. Please ask an Administrator to run `/configure`.',
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
+
   const subcommand = interaction.options.getSubcommand();
   const title = interaction.options.getString('title');
 
