@@ -14,10 +14,10 @@ import { getGuildConfig } from '../database.js';
 
 export async function handleInteraction(interaction) {
   if (interaction.isButton()) {
-    const [action, type] = interaction.customId.split(':');
+    const [action, type, tagId] = interaction.customId.split(':');
     
     if (action === 'write-desc') {
-      await handleWriteDescClick(interaction, type);
+      await handleWriteDescClick(interaction, type, tagId);
       return;
     }
     
@@ -34,8 +34,8 @@ export async function handleInteraction(interaction) {
 
   if (interaction.isModalSubmit()) {
     if (interaction.customId.startsWith('desc-modal:')) {
-      const [, type] = interaction.customId.split(':');
-      await handleDescSubmit(interaction, type);
+      const [, type, tagId] = interaction.customId.split(':');
+      await handleDescSubmit(interaction, type, tagId);
       return;
     }
     
@@ -47,9 +47,9 @@ export async function handleInteraction(interaction) {
   }
 }
 
-async function handleWriteDescClick(interaction, type) {
+async function handleWriteDescClick(interaction, type, tagId) {
   const modal = new ModalBuilder()
-    .setCustomId(`desc-modal:${type}`)
+    .setCustomId(`desc-modal:${type}:${tagId}`)
     .setTitle('Resource Description');
 
   const descInput = new TextInputBuilder()
@@ -66,13 +66,14 @@ async function handleWriteDescClick(interaction, type) {
   await interaction.showModal(modal);
 }
 
-async function handleDescSubmit(interaction, type) {
+async function handleDescSubmit(interaction, type, tagId) {
   const description = interaction.fields.getTextInputValue('resource-desc');
   const originalEmbed = interaction.message.embeds[0];
   const title = originalEmbed.title.replace('Draft: ', '');
 
   const config = await getGuildConfig(interaction.guildId);
   const reviewChannelId = config?.reviewChannelId;
+  const publicChannelId = config?.publicChannelId;
   const reviewChannel = reviewChannelId ? await interaction.client.channels.fetch(reviewChannelId).catch(() => null) : null;
 
   if (!reviewChannel) {
@@ -89,6 +90,15 @@ async function handleDescSubmit(interaction, type) {
     components: []
   });
 
+  let tagName = null;
+  if (tagId && tagId !== 'none' && publicChannelId) {
+    const publicChannel = await interaction.client.channels.fetch(publicChannelId).catch(() => null);
+    if (publicChannel && publicChannel.type === ChannelType.GuildForum) {
+      const tag = publicChannel.availableTags.find(t => t.id === tagId);
+      if (tag) tagName = tag.name;
+    }
+  }
+
   const reviewEmbed = new EmbedBuilder()
     .setTitle('New Resource Submission')
     .setColor('#3498db')
@@ -96,9 +106,13 @@ async function handleDescSubmit(interaction, type) {
     .addFields(
       { name: 'Title', value: title, inline: false },
       { name: 'Description', value: description, inline: false }
-    )
-    .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
-    .setTimestamp();
+    );
+
+  if (tagName) {
+    reviewEmbed.addFields({ name: 'Selected Tag', value: tagName, inline: true });
+  }
+
+  reviewEmbed.setThumbnail(interaction.user.displayAvatarURL({ dynamic: true })).setTimestamp();
 
   let url = null;
   let file = null;
@@ -107,7 +121,11 @@ async function handleDescSubmit(interaction, type) {
   if (type === 'link') {
     url = originalEmbed.fields.find(f => f.name === 'URL').value;
     reviewEmbed.addFields({ name: 'URL / Link', value: url, inline: false });
-    reviewEmbed.setFooter({ text: `Oasis • Type: ${type} • Submitter: ${interaction.user.id}` });
+    
+    const footerParts = [`Oasis`, `Type: ${type}`, `Submitter: ${interaction.user.id}`];
+    if (tagId && tagId !== 'none') footerParts.push(`Tag: ${tagId}`);
+    reviewEmbed.setFooter({ text: footerParts.join(' // ') });
+    
   } else if (type === 'file') {
     const fileNameField = originalEmbed.fields.find(f => f.name === 'File Name');
     const fileUrlField = originalEmbed.fields.find(f => f.name === 'File URL');
@@ -126,9 +144,9 @@ async function handleDescSubmit(interaction, type) {
         { name: 'File URL', value: file.url, inline: false }
       );
       
-      reviewEmbed.setFooter({ 
-        text: `Oasis • Type: ${type} • Submitter: ${interaction.user.id} • Size: ${fileSize}` 
-      });
+      const footerParts = [`Oasis`, `Type: ${type}`, `Submitter: ${interaction.user.id}`, `Size: ${fileSize}`];
+      if (tagId && tagId !== 'none') footerParts.push(`Tag: ${tagId}`);
+      reviewEmbed.setFooter({ text: footerParts.join(' // ') });
     }
   }
 
@@ -175,10 +193,12 @@ async function handleApprove(interaction) {
   const typeMatch = footerText.match(/Type: (link|file)/);
   const submitterMatch = footerText.match(/Submitter: (\d+)/);
   const sizeMatch = footerText.match(/Size: (\d+)/);
+  const tagMatch = footerText.match(/Tag: (\d+)/);
 
   const type = typeMatch ? typeMatch[1] : 'link';
   const submitterId = submitterMatch ? submitterMatch[1] : null;
   const fileSize = sizeMatch ? parseInt(sizeMatch[1]) : 0;
+  const tagId = tagMatch ? tagMatch[1] : null;
 
   const title = originalEmbed.fields.find(f => f.name === 'Title').value;
   const description = originalEmbed.fields.find(f => f.name === 'Description').value;
@@ -240,10 +260,14 @@ async function handleApprove(interaction) {
     }
 
     if (isForum) {
-      await publicChannel.threads.create({
+      const options = {
         name: title.length > 95 ? title.substring(0, 95) + '...' : title,
         message: messagePayload
-      });
+      };
+      if (tagId && tagId !== 'none') {
+        options.appliedTags = [tagId];
+      }
+      await publicChannel.threads.create(options);
     } else {
       await publicChannel.send(messagePayload);
     }
