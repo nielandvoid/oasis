@@ -130,8 +130,7 @@ async function handleDescSubmit(interaction, type) {
   await interaction.update({ 
     content: 'Thank you! Your resource has been submitted to the moderators for review.', 
     embeds: [],
-    components: [],
-    files: []
+    components: []
   });
 }
 
@@ -238,8 +237,7 @@ async function handleApprove(interaction) {
 
   await interaction.editReply({
     embeds: [approvedEmbed],
-    components: [],
-    files: []
+    components: []
   });
 }
 
@@ -307,7 +305,6 @@ async function handleRejectSubmit(interaction, messageId) {
 
   await originalMessage.edit({
     embeds: [rejectedEmbed],
-    components: [],
-    files: []
+    components: []
   });
 }
