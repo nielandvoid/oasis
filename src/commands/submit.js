@@ -67,7 +67,10 @@ export async function execute(interaction) {
       .setTitle(`Draft: ${title}`)
       .setColor('#3498db')
       .setDescription('Your submission is almost ready. Click below to add a description (markdown and linebreaks supported).')
-      .addFields({ name: 'File Name', value: file.name });
+      .addFields(
+        { name: 'File Name', value: file.name },
+        { name: 'File URL', value: file.url }
+      );
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -79,7 +82,6 @@ export async function execute(interaction) {
     await interaction.reply({ 
       embeds: [draftEmbed], 
       components: [row], 
-      files: [file], 
       ephemeral: true 
     });
   }

@@ -98,8 +98,13 @@ async function handleDescSubmit(interaction, type) {
     url = originalEmbed.fields.find(f => f.name === 'URL').value;
     reviewEmbed.addFields({ name: 'URL / Link', value: url, inline: false });
   } else if (type === 'file') {
-    file = interaction.message.attachments.first();
-    if (file) {
+    const fileNameField = originalEmbed.fields.find(f => f.name === 'File Name');
+    const fileUrlField = originalEmbed.fields.find(f => f.name === 'File URL');
+    if (fileNameField && fileUrlField) {
+      file = {
+        name: fileNameField.value,
+        url: fileUrlField.value
+      };
       reviewEmbed.addFields({ name: 'File Name', value: file.name, inline: false });
     }
   }
@@ -117,7 +122,7 @@ async function handleDescSubmit(interaction, type) {
 
   const messageOptions = { embeds: [reviewEmbed], components: [row] };
   if (type === 'file' && file) {
-    messageOptions.files = [file];
+    messageOptions.files = [{ attachment: file.url, name: file.name }];
   }
 
   await reviewChannel.send(messageOptions);
