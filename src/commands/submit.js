@@ -14,6 +14,9 @@ export const data = new SlashCommandBuilder()
       .addStringOption(option =>
         option.setName('url').setDescription('The URL link of the resource').setRequired(true)
       )
+      .addStringOption(option =>
+        option.setName('tag').setDescription('Select a tag for this resource (Forum channels only)').setAutocomplete(true).setRequired(true)
+      )
   )
   .addSubcommand(subcommand =>
     subcommand
@@ -24,6 +27,9 @@ export const data = new SlashCommandBuilder()
       )
       .addAttachmentOption(option =>
         option.setName('file').setDescription('Upload the file/attachment').setRequired(true)
+      )
+      .addStringOption(option =>
+        option.setName('tag').setDescription('Select a tag for this resource (Forum channels only)').setAutocomplete(true).setRequired(true)
       )
   );
 
@@ -58,6 +64,8 @@ export async function execute(interaction) {
       url = 'https://' + url;
     }
 
+    const tagId = interaction.options.getString('tag') || 'none';
+
     const draftEmbed = new EmbedBuilder()
       .setTitle(`Draft: ${title}`)
       .setColor('#3498db')
@@ -66,7 +74,7 @@ export async function execute(interaction) {
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId('write-desc:link')
+        .setCustomId(`write-desc:link:${tagId}`)
         .setLabel('Write Description')
         .setStyle(ButtonStyle.Primary)
     );
@@ -74,6 +82,8 @@ export async function execute(interaction) {
     await interaction.reply({ embeds: [draftEmbed], components: [row], flags: MessageFlags.Ephemeral });
   } else if (subcommand === 'file') {
     const file = interaction.options.getAttachment('file');
+
+    const tagId = interaction.options.getString('tag') || 'none';
 
     const draftEmbed = new EmbedBuilder()
       .setTitle(`Draft: ${title}`)
@@ -87,7 +97,7 @@ export async function execute(interaction) {
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId('write-desc:file')
+        .setCustomId(`write-desc:file:${tagId}`)
         .setLabel('Write Description')
         .setStyle(ButtonStyle.Primary)
     );
