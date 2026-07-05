@@ -120,18 +120,26 @@ async function handleDescSubmit(interaction, type) {
       .setStyle(ButtonStyle.Danger)
   );
 
-  const messageOptions = { embeds: [reviewEmbed], components: [row] };
-  if (type === 'file' && file) {
-    messageOptions.files = [{ attachment: file.url, name: file.name }];
-  }
-
-  await reviewChannel.send(messageOptions);
-
   await interaction.update({ 
     content: 'Thank you! Your resource has been submitted to the moderators for review.', 
     embeds: [],
     components: []
   });
+
+  const messageOptions = { embeds: [reviewEmbed], components: [row] };
+  if (type === 'file' && file) {
+    messageOptions.files = [{ attachment: file.url, name: file.name }];
+  }
+
+  try {
+    await reviewChannel.send(messageOptions);
+  } catch (error) {
+    console.error('Error sending submission to review channel:', error);
+    await interaction.followUp({ 
+      content: 'Error: Failed to deliver your submission to the moderators. Please try again.', 
+      ephemeral: true 
+    }).catch(() => null);
+  }
 }
 
 async function handleApprove(interaction) {
