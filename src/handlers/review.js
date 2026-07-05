@@ -10,41 +10,28 @@ import {
 } from 'discord.js';
 
 export async function handleInteraction(interaction) {
-  if (interaction.isModalSubmit() && interaction.customId === 'submit-resource-modal') {
-    await handleResourceSubmit(interaction);
-    return;
-  }
-
   if (interaction.isButton()) {
-    const [action, submitterId] = interaction.customId.split(':');
+    const action = interaction.customId;
     
     if (action === 'approve') {
-      await handleApprove(interaction, submitterId);
+      await handleApprove(interaction);
       return;
     }
     
     if (action === 'reject') {
-      await handleRejectClick(interaction, submitterId);
+      await handleRejectClick(interaction);
       return;
     }
   }
 
   if (interaction.isModalSubmit() && interaction.customId.startsWith('reject-modal:')) {
-    const [, submitterId, messageId] = interaction.customId.split(':');
-    await handleRejectSubmit(interaction, submitterId, messageId);
+    const [, messageId] = interaction.customId.split(':');
+    await handleRejectSubmit(interaction, messageId);
     return;
   }
 }
 
-async function handleResourceSubmit(interaction) {
-  const title = interaction.fields.getTextInputValue('resource-title');
-  let url = interaction.fields.getTextInputValue('resource-url').trim();
-  const description = interaction.fields.getTextInputValue('resource-desc');
-
-  if (!/^https?:\/\//i.test(url)) {
-    url = 'https://' + url;
-  }
-
+export async function submitResource(interaction, { type, title, description, url, file }) {
   const reviewChannelId = process.env.REVIEW_CHANNEL_ID;
   const reviewChannel = await interaction.client.channels.fetch(reviewChannelId).catch(() => null);
 
@@ -62,26 +49,35 @@ async function handleResourceSubmit(interaction) {
     .setDescription(`A new resource has been submitted for review.`)
     .addFields(
       { name: 'Title', value: title, inline: false },
-      { name: 'URL / Link', value: url, inline: false },
-      { name: 'Description', value: description, inline: false },
-      { name: 'Submitted By', value: `${interaction.user.tag} (${interaction.user.id})`, inline: true }
+      { name: 'Description', value: description, inline: false }
     )
     .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
-    .setFooter({ text: `Oasis Resource Bot • Pending Review` })
+    .setFooter({ text: `Oasis • Type: ${type} • Submitter: ${interaction.user.id}` })
     .setTimestamp();
+
+  if (type === 'link') {
+    reviewEmbed.addFields({ name: 'URL / Link', value: url, inline: false });
+  } else if (type === 'file') {
+    reviewEmbed.addFields({ name: 'File Name', value: file.name, inline: false });
+  }
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`approve:${interaction.user.id}`)
+      .setCustomId('approve')
       .setLabel('Approve & Publish')
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
-      .setCustomId(`reject:${interaction.user.id}`)
+      .setCustomId('reject')
       .setLabel('Reject')
       .setStyle(ButtonStyle.Danger)
   );
 
-  await reviewChannel.send({ embeds: [reviewEmbed], components: [row] });
+  const messageOptions = { embeds: [reviewEmbed], components: [row] };
+  if (type === 'file') {
+    messageOptions.files = [file];
+  }
+
+  await reviewChannel.send(messageOptions);
 
   await interaction.reply({ 
     content: 'Thank you! Your resource has been submitted to the moderators for review.', 
@@ -89,7 +85,7 @@ async function handleResourceSubmit(interaction) {
   });
 }
 
-async function handleApprove(interaction, submitterId) {
+async function handleApprove(interaction) {
   if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
     await interaction.reply({ content: 'You do not have permission to review resources.', ephemeral: true });
     return;
@@ -98,8 +94,15 @@ async function handleApprove(interaction, submitterId) {
   await interaction.deferUpdate();
 
   const originalEmbed = interaction.message.embeds[0];
+  const footerText = originalEmbed.footer.text;
+
+  const typeMatch = footerText.match(/Type: (link|file)/);
+  const submitterMatch = footerText.match(/Submitter: (\d+)/);
+
+  const type = typeMatch ? typeMatch[1] : 'link';
+  const submitterId = submitterMatch ? submitterMatch[1] : null;
+
   const title = originalEmbed.fields.find(f => f.name === 'Title').value;
-  const url = originalEmbed.fields.find(f => f.name === 'URL / Link').value;
   const description = originalEmbed.fields.find(f => f.name === 'Description').value;
 
   const publicChannelId = process.env.PUBLIC_CHANNEL_ID;
@@ -113,26 +116,47 @@ async function handleApprove(interaction, submitterId) {
 
   const publicEmbed = new EmbedBuilder()
     .setTitle(title)
-    .setURL(url)
     .setColor('#2ecc71')
     .setDescription(description)
     .addFields(
-      { name: 'Link', value: `[Visit Resource](${url})`, inline: true },
       { name: 'Contributor', value: `<@${submitterId}>`, inline: true }
     )
     .setFooter({ text: `Published via Oasis` })
     .setTimestamp();
 
+  let attachment = null;
+  const filesOption = [];
+
+  if (type === 'link') {
+    const url = originalEmbed.fields.find(f => f.name === 'URL / Link').value;
+    publicEmbed.setURL(url);
+    publicEmbed.addFields({ name: 'Link', value: `[Visit Resource](${url})`, inline: true });
+  } else if (type === 'file') {
+    attachment = interaction.message.attachments.first();
+    if (attachment) {
+      const isImage = attachment.contentType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(attachment.name);
+      if (isImage) {
+        publicEmbed.setImage(attachment.url);
+      } else {
+        publicEmbed.addFields({ name: 'Attachment', value: `[Download ${attachment.name}](${attachment.url})`, inline: true });
+      }
+      filesOption.push(attachment);
+    }
+  }
+
   try {
+    const messagePayload = { embeds: [publicEmbed] };
+    if (filesOption.length > 0) {
+      messagePayload.files = filesOption;
+    }
+
     if (isForum) {
       await publicChannel.threads.create({
         name: title.length > 95 ? title.substring(0, 95) + '...' : title,
-        message: {
-          embeds: [publicEmbed]
-        }
+        message: messagePayload
       });
     } else {
-      await publicChannel.send({ embeds: [publicEmbed] });
+      await publicChannel.send(messagePayload);
     }
   } catch (error) {
     console.error('Error publishing resource:', error);
@@ -146,8 +170,13 @@ async function handleApprove(interaction, submitterId) {
       .setTitle('Resource Approved & Published!')
       .setColor('#2ecc71')
       .setDescription(`Your submission **"${title}"** has been approved and published to the resource channel!`)
-      .addFields({ name: 'Link', value: url })
       .setTimestamp();
+
+    if (type === 'link') {
+      const url = originalEmbed.fields.find(f => f.name === 'URL / Link').value;
+      dmEmbed.addFields({ name: 'Link', value: url });
+    }
+
     await submitter.send({ embeds: [dmEmbed] }).catch(() => console.log(`Could not DM user ${submitterId}`));
   }
 
@@ -159,18 +188,19 @@ async function handleApprove(interaction, submitterId) {
 
   await interaction.editReply({
     embeds: [approvedEmbed],
-    components: []
+    components: [],
+    files: []
   });
 }
 
-async function handleRejectClick(interaction, submitterId) {
+async function handleRejectClick(interaction) {
   if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
     await interaction.reply({ content: 'You do not have permission to review resources.', ephemeral: true });
     return;
   }
 
   const modal = new ModalBuilder()
-    .setCustomId(`reject-modal:${submitterId}:${interaction.message.id}`)
+    .setCustomId(`reject-modal:${interaction.message.id}`)
     .setTitle('Reject Resource Submission');
 
   const reasonInput = new TextInputBuilder()
@@ -187,7 +217,7 @@ async function handleRejectClick(interaction, submitterId) {
   await interaction.showModal(modal);
 }
 
-async function handleRejectSubmit(interaction, submitterId, messageId) {
+async function handleRejectSubmit(interaction, messageId) {
   await interaction.deferUpdate();
 
   const reason = interaction.fields.getTextInputValue('reject-reason');
@@ -200,6 +230,11 @@ async function handleRejectSubmit(interaction, submitterId, messageId) {
   }
 
   const originalEmbed = originalMessage.embeds[0];
+  const footerText = originalEmbed.footer.text;
+
+  const submitterMatch = footerText.match(/Submitter: (\d+)/);
+  const submitterId = submitterMatch ? submitterMatch[1] : null;
+
   const title = originalEmbed.fields.find(f => f.name === 'Title').value;
 
   const submitter = await interaction.client.users.fetch(submitterId).catch(() => null);
@@ -222,6 +257,7 @@ async function handleRejectSubmit(interaction, submitterId, messageId) {
 
   await originalMessage.edit({
     embeds: [rejectedEmbed],
-    components: []
+    components: [],
+    files: []
   });
 }

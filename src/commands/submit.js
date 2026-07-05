@@ -1,42 +1,62 @@
-import { SlashCommandBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
+import { SlashCommandBuilder } from 'discord.js';
+import { submitResource } from '../handlers/review.js';
 
 export const data = new SlashCommandBuilder()
   .setName('submit')
-  .setDescription('Submit a resource for review');
+  .setDescription('Submit a resource for review')
+  .addSubcommand(subcommand =>
+    subcommand
+      .setName('link')
+      .setDescription('Submit a web link/resource')
+      .addStringOption(option =>
+        option.setName('title').setDescription('The title of the resource').setRequired(true).setMaxLength(100)
+      )
+      .addStringOption(option =>
+        option.setName('description').setDescription('Describe what this resource is').setRequired(true).setMaxLength(1000)
+      )
+      .addStringOption(option =>
+        option.setName('url').setDescription('The URL link of the resource').setRequired(true)
+      )
+  )
+  .addSubcommand(subcommand =>
+    subcommand
+      .setName('file')
+      .setDescription('Submit a file/attachment resource')
+      .addStringOption(option =>
+        option.setName('title').setDescription('The title of the resource').setRequired(true).setMaxLength(100)
+      )
+      .addStringOption(option =>
+        option.setName('description').setDescription('Describe what this resource is').setRequired(true).setMaxLength(1000)
+      )
+      .addAttachmentOption(option =>
+        option.setName('file').setDescription('Upload the file/attachment').setRequired(true)
+      )
+  );
 
 export async function execute(interaction) {
-  const modal = new ModalBuilder()
-    .setCustomId('submit-resource-modal')
-    .setTitle('Submit a Resource');
+  const subcommand = interaction.options.getSubcommand();
+  const title = interaction.options.getString('title');
+  const description = interaction.options.getString('description');
 
-  const titleInput = new TextInputBuilder()
-    .setCustomId('resource-title')
-    .setLabel('Resource Title')
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder('e.g., Learn Git Branching')
-    .setRequired(true)
-    .setMaxLength(100);
+  if (subcommand === 'link') {
+    let url = interaction.options.getString('url').trim();
 
-  const urlInput = new TextInputBuilder()
-    .setCustomId('resource-url')
-    .setLabel('Resource URL / Link')
-    .setStyle(TextInputStyle.Short)
-    .setPlaceholder('e.g., https://learngitbranching.js.org')
-    .setRequired(true);
+    const urlRegex = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/i;
+    if (!urlRegex.test(url)) {
+      await interaction.reply({ 
+        content: 'Error: Please provide a valid URL link (e.g., https://example.com).', 
+        ephemeral: true 
+      });
+      return;
+    }
 
-  const descInput = new TextInputBuilder()
-    .setCustomId('resource-desc')
-    .setLabel('Description')
-    .setStyle(TextInputStyle.Paragraph)
-    .setPlaceholder('Explain what this resource is and why it is helpful...')
-    .setRequired(true)
-    .setMaxLength(1000);
+    if (!/^https?:\/\//i.test(url)) {
+      url = 'https://' + url;
+    }
 
-  const row1 = new ActionRowBuilder().addComponents(titleInput);
-  const row2 = new ActionRowBuilder().addComponents(urlInput);
-  const row3 = new ActionRowBuilder().addComponents(descInput);
-
-  modal.addComponents(row1, row2, row3);
-
-  await interaction.showModal(modal);
+    await submitResource(interaction, { type: 'link', title, description, url });
+  } else if (subcommand === 'file') {
+    const file = interaction.options.getAttachment('file');
+    await submitResource(interaction, { type: 'file', title, description, file });
+  }
 }
