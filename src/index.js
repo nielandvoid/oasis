@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import { data as submitCommand, execute as executeSubmit } from './commands/submit.js';
 import { data as configureCommand, execute as executeConfigure } from './commands/configure.js';
 import { data as pingCommand, execute as executePing } from './commands/ping.js';
+import { data as helpCommand, execute as executeHelp } from './commands/help.js';
 import { handleInteraction } from './handlers/review.js';
 import { connectDatabase, getGuildConfig } from './database.js';
 import http from 'http';
@@ -41,7 +42,12 @@ client.once(Events.ClientReady, async () => {
   const rest = new REST({ version: '10' }).setToken(token);
 
   try {
-    const commands = [submitCommand.toJSON(), configureCommand.toJSON(), pingCommand.toJSON()];
+    const commands = [
+      submitCommand.toJSON(), 
+      configureCommand.toJSON(), 
+      pingCommand.toJSON(),
+      helpCommand.toJSON()
+    ];
 
     console.log('Registering global slash commands...');
     await rest.put(
@@ -82,6 +88,8 @@ client.on('interactionCreate', async (interaction) => {
         await executeConfigure(interaction);
       } else if (interaction.commandName === 'ping') {
         await executePing(interaction);
+      } else if (interaction.commandName === 'help') {
+        await executeHelp(interaction);
       }
       return;
     }
