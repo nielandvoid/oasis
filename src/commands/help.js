@@ -6,9 +6,9 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction) {
   const helpEmbed = new EmbedBuilder()
-    .setTitle('Oasis Command Help')
-    .setColor('#3498db')
-    .setDescription('Here is a list of all available commands and how to use them:')
+     .setTitle('Oasis Command Help')
+     .setColor('#ffffff')
+     .setDescription('Here is a list of all available commands and how to use them:')
     .addFields(
       { 
         name: '<:files:1523716237748732005> `/submit file`', 

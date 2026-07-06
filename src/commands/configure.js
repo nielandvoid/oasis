@@ -74,7 +74,7 @@ export async function execute(interaction) {
     
     const embed = new EmbedBuilder()
       .setTitle('Oasis Configuration')
-      .setColor('#3498db')
+      .setColor('#ffffff')
       .setDescription('Current server configuration for Oasis:')
       .addFields(
         { 

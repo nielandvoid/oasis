@@ -12,7 +12,7 @@ export async function execute(interaction) {
 
   const embed = new EmbedBuilder()
     .setTitle('🏓 Pong!')
-    .setColor('#3498db')
+    .setColor('#ffffff')
     .addFields(
       { name: 'Bot Latency', value: `${latency}ms`, inline: true },
       { name: 'API Latency', value: `${apiLatency}ms`, inline: true }

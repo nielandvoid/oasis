@@ -101,7 +101,7 @@ async function handleDescSubmit(interaction, type, tagId) {
 
   const reviewEmbed = new EmbedBuilder()
     .setTitle('New Resource Submission')
-    .setColor('#3498db')
+    .setColor('#ffffff')
     .setDescription(`A new resource has been submitted for review.`)
     .addFields(
       { name: 'Title', value: title, inline: false },

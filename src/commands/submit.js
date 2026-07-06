@@ -80,7 +80,7 @@ export async function execute(interaction) {
 
     const draftEmbed = new EmbedBuilder()
       .setTitle(`Draft: ${title}`)
-      .setColor('#3498db')
+      .setColor('#ffffff')
       .setDescription('Your submission is almost ready. Click below to add a description (markdown and linebreaks supported).')
       .addFields({ name: 'URL', value: url });
 
@@ -106,7 +106,7 @@ export async function execute(interaction) {
 
     const draftEmbed = new EmbedBuilder()
       .setTitle(`Draft: ${title}`)
-      .setColor('#3498db')
+      .setColor('#ffffff')
       .setDescription('Your submission is almost ready. Click below to add a description (markdown and linebreaks supported).');
 
     const fields = [];
