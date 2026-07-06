@@ -11,7 +11,7 @@ export async function execute(interaction) {
   const apiLatency = Math.round(interaction.client.ws.ping);
 
   const embed = new EmbedBuilder()
-    .setTitle('🏓 Pong!')
+    .setTitle('<:pong:1523716243868221631> Pong!')
     .setColor('#ffffff')
     .addFields(
       { name: 'Bot Latency', value: `${latency}ms`, inline: true },
