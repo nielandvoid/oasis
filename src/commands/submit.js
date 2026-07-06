@@ -31,6 +31,18 @@ export const data = new SlashCommandBuilder()
       .addStringOption(option =>
         option.setName('tag').setDescription('Select a tag for this resource (Forum channels only)').setAutocomplete(true).setRequired(true)
       )
+      .addAttachmentOption(option =>
+        option.setName('file2').setDescription('Upload a second file/attachment (optional)')
+      )
+      .addAttachmentOption(option =>
+        option.setName('file3').setDescription('Upload a third file/attachment (optional)')
+      )
+      .addAttachmentOption(option =>
+        option.setName('file4').setDescription('Upload a fourth file/attachment (optional)')
+      )
+      .addAttachmentOption(option =>
+        option.setName('file5').setDescription('Upload a fifth file/attachment (optional)')
+      )
   );
 
 export async function execute(interaction) {
@@ -81,19 +93,31 @@ export async function execute(interaction) {
 
     await interaction.reply({ embeds: [draftEmbed], components: [row], flags: MessageFlags.Ephemeral });
   } else if (subcommand === 'file') {
-    const file = interaction.options.getAttachment('file');
+    const files = [];
+    const firstFile = interaction.options.getAttachment('file');
+    if (firstFile) files.push(firstFile);
+
+    for (let i = 2; i <= 5; i++) {
+      const file = interaction.options.getAttachment(`file${i}`);
+      if (file) files.push(file);
+    }
 
     const tagId = interaction.options.getString('tag') || 'none';
 
     const draftEmbed = new EmbedBuilder()
       .setTitle(`Draft: ${title}`)
       .setColor('#3498db')
-      .setDescription('Your submission is almost ready. Click below to add a description (markdown and linebreaks supported).')
-      .addFields(
-        { name: 'File Name', value: file.name },
-        { name: 'File URL', value: file.url },
-        { name: 'File Size', value: file.size.toString() }
+      .setDescription('Your submission is almost ready. Click below to add a description (markdown and linebreaks supported).');
+
+    const fields = [];
+    files.forEach((file, idx) => {
+      fields.push(
+        { name: `File ${idx + 1} Name`, value: file.name },
+        { name: `File ${idx + 1} URL`, value: file.url },
+        { name: `File ${idx + 1} Size`, value: file.size.toString() }
       );
+    });
+    draftEmbed.addFields(fields);
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()

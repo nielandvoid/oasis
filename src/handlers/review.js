@@ -115,8 +115,7 @@ async function handleDescSubmit(interaction, type, tagId) {
   reviewEmbed.setThumbnail(interaction.user.displayAvatarURL({ dynamic: true })).setTimestamp();
 
   let url = null;
-  let file = null;
-  let fileSize = 0;
+  const files = [];
 
   if (type === 'link') {
     url = originalEmbed.fields.find(f => f.name === 'URL').value;
@@ -127,27 +126,31 @@ async function handleDescSubmit(interaction, type, tagId) {
     reviewEmbed.setFooter({ text: footerParts.join(' // ') });
     
   } else if (type === 'file') {
-    const fileNameField = originalEmbed.fields.find(f => f.name === 'File Name');
-    const fileUrlField = originalEmbed.fields.find(f => f.name === 'File URL');
-    const fileSizeField = originalEmbed.fields.find(f => f.name === 'File Size');
-
-    if (fileNameField && fileUrlField && fileSizeField) {
-      fileSize = parseInt(fileSizeField.value) || 0;
-      file = {
-        name: fileNameField.value,
-        url: fileUrlField.value,
-        size: fileSize
-      };
-      
-      reviewEmbed.addFields(
-        { name: 'File Name', value: file.name, inline: false },
-        { name: 'File URL', value: file.url, inline: false }
-      );
-      
-      const footerParts = [`Oasis`, `Type: ${type}`, `Submitter: ${interaction.user.id}`, `Size: ${fileSize}`];
-      if (tagId && tagId !== 'none') footerParts.push(`Tag: ${tagId}`);
-      reviewEmbed.setFooter({ text: footerParts.join(' // ') });
+    let idx = 1;
+    while (true) {
+      const nameField = originalEmbed.fields.find(f => f.name === `File ${idx} Name`);
+      const urlField = originalEmbed.fields.find(f => f.name === `File ${idx} URL`);
+      const sizeField = originalEmbed.fields.find(f => f.name === `File ${idx} Size`);
+      if (!nameField || !urlField || !sizeField) break;
+      files.push({
+        name: nameField.value,
+        url: urlField.value,
+        size: parseInt(sizeField.value) || 0
+      });
+      idx++;
     }
+
+    files.forEach((file, index) => {
+      reviewEmbed.addFields(
+        { name: `File ${index + 1} Name`, value: file.name, inline: false },
+        { name: `File ${index + 1} URL`, value: file.url, inline: false }
+      );
+    });
+    
+    const totalSize = files.reduce((acc, f) => acc + f.size, 0);
+    const footerParts = [`Oasis`, `Type: ${type}`, `Submitter: ${interaction.user.id}`, `Size: ${totalSize}`];
+    if (tagId && tagId !== 'none') footerParts.push(`Tag: ${tagId}`);
+    reviewEmbed.setFooter({ text: footerParts.join(' // ') });
   }
 
   const row = new ActionRowBuilder().addComponents(
@@ -163,9 +166,11 @@ async function handleDescSubmit(interaction, type, tagId) {
 
   const messageOptions = { embeds: [reviewEmbed], components: [row] };
   
-  const isLargeFile = type === 'file' && fileSize > 10 * 1024 * 1024;
-  if (type === 'file' && file && !isLargeFile) {
-    messageOptions.files = [{ attachment: file.url, name: file.name }];
+  if (type === 'file' && files.length > 0) {
+    const filesToAttach = files.filter(f => f.size <= 10 * 1024 * 1024).map(f => ({ attachment: f.url, name: f.name }));
+    if (filesToAttach.length > 0) {
+      messageOptions.files = filesToAttach;
+    }
   }
 
   try {
@@ -225,32 +230,36 @@ async function handleApprove(interaction) {
     .setTimestamp();
 
   const filesOption = [];
-  const isLargeFile = type === 'file' && fileSize > 10 * 1024 * 1024;
 
   if (type === 'link') {
     const url = originalEmbed.fields.find(f => f.name === 'URL / Link').value;
     publicEmbed.setURL(url);
     publicEmbed.addFields({ name: 'Link', value: `[Visit Resource](${url})`, inline: true });
   } else if (type === 'file') {
-    const fileName = originalEmbed.fields.find(f => f.name === 'File Name').value;
-    const fileUrl = originalEmbed.fields.find(f => f.name === 'File URL').value;
+    const files = [];
+    let idx = 1;
+    while (true) {
+      const nameField = originalEmbed.fields.find(f => f.name === `File ${idx} Name`);
+      const urlField = originalEmbed.fields.find(f => f.name === `File ${idx} URL`);
+      if (!nameField || !urlField) break;
+      files.push({ name: nameField.value, url: urlField.value });
+      idx++;
+    }
 
-    if (isLargeFile) {
-      publicEmbed.addFields({ name: 'Attachment (Large File)', value: `[Download ${fileName}](${fileUrl})`, inline: true });
-    } else {
-      const attachment = interaction.message.attachments.first();
+    files.forEach((file, index) => {
+      const attachment = interaction.message.attachments.find(att => att.name === file.name);
       if (attachment) {
         const isImage = attachment.contentType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(attachment.name);
-        if (isImage) {
+        if (isImage && files.length === 1) {
           publicEmbed.setImage(`attachment://${attachment.name}`);
         } else {
-          publicEmbed.addFields({ name: 'Attachment', value: `[Download ${attachment.name}](${attachment.url})`, inline: true });
+          publicEmbed.addFields({ name: `Attachment ${index + 1}`, value: `[Download ${attachment.name}](${attachment.url})`, inline: true });
         }
         filesOption.push({ attachment: attachment.url, name: attachment.name });
       } else {
-        publicEmbed.addFields({ name: 'Attachment', value: `[Download ${fileName}](${fileUrl})`, inline: true });
+        publicEmbed.addFields({ name: `Attachment ${index + 1} (Large File)`, value: `[Download ${file.name}](${file.url})`, inline: true });
       }
-    }
+    });
   }
 
   let publishedUrl = null;
@@ -297,9 +306,18 @@ async function handleApprove(interaction) {
       const url = originalEmbed.fields.find(f => f.name === 'URL / Link').value;
       dmEmbed.addFields({ name: 'Link', value: url });
     } else if (type === 'file') {
-      const fileName = originalEmbed.fields.find(f => f.name === 'File Name').value;
-      const fileUrl = originalEmbed.fields.find(f => f.name === 'File URL').value;
-      dmEmbed.addFields({ name: 'Attachment', value: `[Download ${fileName}](${fileUrl})` });
+      const files = [];
+      let idx = 1;
+      while (true) {
+        const nameField = originalEmbed.fields.find(f => f.name === `File ${idx} Name`);
+        const urlField = originalEmbed.fields.find(f => f.name === `File ${idx} URL`);
+        if (!nameField || !urlField) break;
+        files.push({ name: nameField.value, url: urlField.value });
+        idx++;
+      }
+      files.forEach((file, index) => {
+        dmEmbed.addFields({ name: `Attachment ${index + 1}`, value: `[Download ${file.name}](${file.url})` });
+      });
     }
 
     await submitter.send({ embeds: [dmEmbed] }).catch(() => console.log(`Could not DM user ${submitterId}`));
