@@ -253,6 +253,7 @@ async function handleApprove(interaction) {
     }
   }
 
+  let publishedUrl = null;
   try {
     const messagePayload = { embeds: [publicEmbed] };
     if (filesOption.length > 0) {
@@ -267,9 +268,11 @@ async function handleApprove(interaction) {
       if (tagId && tagId !== 'none') {
         options.appliedTags = [tagId];
       }
-      await publicChannel.threads.create(options);
+      const thread = await publicChannel.threads.create(options);
+      publishedUrl = thread.url;
     } else {
-      await publicChannel.send(messagePayload);
+      const msg = await publicChannel.send(messagePayload);
+      publishedUrl = msg.url;
     }
   } catch (error) {
     console.error('Error publishing resource:', error);
@@ -279,11 +282,16 @@ async function handleApprove(interaction) {
 
   const submitter = await interaction.client.users.fetch(submitterId).catch(() => null);
   if (submitter) {
+    const guildName = interaction.guild?.name || 'the server';
     const dmEmbed = new EmbedBuilder()
       .setTitle('Resource Approved & Published!')
       .setColor('#2ecc71')
-      .setDescription(`Your submission **"${title}"** has been approved and published to the resource channel!`)
+      .setDescription(`Your submission **"${title}"** has been approved and published in **${guildName}**!`)
       .setTimestamp();
+
+    if (publishedUrl) {
+      dmEmbed.addFields({ name: 'Resource Post', value: `[Go to Post](${publishedUrl})` });
+    }
 
     if (type === 'link') {
       const url = originalEmbed.fields.find(f => f.name === 'URL / Link').value;
@@ -355,10 +363,11 @@ async function handleRejectSubmit(interaction, messageId) {
 
   const submitter = await interaction.client.users.fetch(submitterId).catch(() => null);
   if (submitter) {
+    const guildName = interaction.guild?.name || 'the server';
     const dmEmbed = new EmbedBuilder()
       .setTitle('Resource Submission Update')
       .setColor('#e74c3c')
-      .setDescription(`Your resource submission **"${title}"** was rejected by the moderators.`)
+      .setDescription(`Your resource submission **"${title}"** in **${guildName}** was rejected by the moderators.`)
       .addFields({ name: 'Reason', value: reason })
       .setTimestamp();
     await submitter.send({ embeds: [dmEmbed] }).catch(() => console.log(`Could not DM user ${submitterId}`));
