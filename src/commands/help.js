@@ -36,7 +36,7 @@ export async function execute(interaction) {
         inline: false 
       }
     )
-    .setFooter({ text: 'Oasis Bot' })
+    .setFooter({ text: 'Oasis' })
     .setTimestamp();
 
   await interaction.reply({ embeds: [helpEmbed] });

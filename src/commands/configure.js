@@ -3,7 +3,7 @@ import { setGuildConfig, getGuildConfig } from '../database.js';
 
 export const data = new SlashCommandBuilder()
   .setName('configure')
-  .setDescription('Configure Oasis bot settings for this server')
+  .setDescription('Configure Oasis settings for this server')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
   .addSubcommand(subcommand =>
     subcommand

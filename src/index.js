@@ -118,7 +118,7 @@ http.createServer((req, res) => {
   const time = new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false });
   console.log(`[${time}] 🏓 Ping received on keep-alive server (Path: ${req.url})`);
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Oasis Bot is online!\n');
+  res.end('Oasis is online!\n');
 }).listen(port, '0.0.0.0', () => {
   console.log(`Keep-alive web server is running on port ${port}`);
 });
