@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, REST, Routes, Events, MessageFlags, ChannelType } from 'discord.js';
+import { Client, GatewayIntentBits, REST, Routes, Events, MessageFlags, ChannelType, ActivityType } from 'discord.js';
 import dotenv from 'dotenv';
 import { data as submitCommand, execute as executeSubmit } from './commands/submit.js';
 import { data as configureCommand, execute as executeConfigure } from './commands/configure.js';
@@ -22,7 +22,14 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
   ],
-  presence: { status: 'idle' }
+  presence: {
+    status: 'online',
+    activities: [{
+      type: ActivityType.Custom,
+      name: 'custom',
+      state: 'resourcing...'
+    }]
+  }
 });
 
 client.once(Events.ClientReady, async () => {
