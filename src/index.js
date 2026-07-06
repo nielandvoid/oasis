@@ -98,7 +98,7 @@ client.on('interactionCreate', async (interaction) => {
 client.login(token);
 
 // Keep-alive HTTP server to prevent hibernation
-const port = process.env.PORT || process.env.SERVER_PORT || 3000;
+const port = process.env.SERVER_PORT || process.env.PORT || 3000;
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Oasis Bot is online!\n');
