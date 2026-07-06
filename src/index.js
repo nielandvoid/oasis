@@ -101,7 +101,7 @@ client.login(token);
 const port = process.env.SERVER_PORT || process.env.PORT || 3000;
 http.createServer((req, res) => {
   const time = new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false });
-  console.log(`[${time}] 🏓 Ping received on keep-alive server`);
+  console.log(`[${time}] 🏓 Ping received on keep-alive server (Path: ${req.url})`);
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Oasis Bot is online!\n');
 }).listen(port, '0.0.0.0', () => {
