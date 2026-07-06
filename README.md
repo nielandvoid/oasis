@@ -4,11 +4,13 @@ a simple, multi-server resource curation bot for Discord. members submit link/fi
 built with node, discord.js, and mongodb.
 
 ## features
-- `/submit link` & `/submit file` subcommands (with mandatory forum tags autocompleted dynamically)
+- `/submit link` & `/submit file` subcommands (upload up to 5 files at once, with mandatory forum tags autocompleted dynamically)
 - modal description box (supports linebreaks & md)
 - auto-bypasses 10mb bot upload limit (links directly to cdn if >10mb)
 - mod approval panel with buttons (approve/reject reason)
 - multi-server configuration (`/configure` command for admins)
+- `/ping` command (websocket heartbeat and response latency)
+- `/help` command (clean list of all available commands and usage instructions)
 - zero deprecation warnings
 
 ## prerequisites
@@ -36,6 +38,7 @@ built with node, discord.js, and mongodb.
    `/configure review-channel channel:#moderator-review`
    `/configure public-channel channel:#public-resources`
    `/configure view`
+3. run `/help` to see available user commands
 
 ## license
 mit
