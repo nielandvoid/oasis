@@ -15,7 +15,7 @@ built with node, discord.js, and mongodb.
 
 ## prerequisites
 * **node.js** (v18.x or higher recommended)
-* a discord bot token (with **Server Members Intent** and **Message Content Intent** enabled)
+* a discord bot token
 * a mongodb atlas database connection string
 
 ## self-host
