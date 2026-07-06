@@ -5,7 +5,8 @@ export const data = new SlashCommandBuilder()
   .setDescription('Check the bot latency and responsiveness');
 
 export async function execute(interaction) {
-  const sent = await interaction.deferReply({ fetchReply: true });
+  await interaction.deferReply();
+  const sent = await interaction.fetchReply();
   const latency = sent.createdTimestamp - interaction.createdTimestamp;
   const apiLatency = Math.round(interaction.client.ws.ping);
 
