@@ -1,5 +1,6 @@
 # Oasis
-[oasis_visual.png](oasis)
+![oasis](oasis_visual.png)
+
 a simple, multi-server resource curation bot for Discord. members submit link/file -> mods approve/reject -> posts to text/forum channel.
 
 built with node, discord.js, and mongodb.
