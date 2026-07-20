@@ -1,4 +1,5 @@
 # Oasis
+[oasis_visual.png](oasis)
 a simple, multi-server resource curation bot for Discord. members submit link/file -> mods approve/reject -> posts to text/forum channel.
 
 built with node, discord.js, and mongodb.
