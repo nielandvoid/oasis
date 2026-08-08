@@ -63,7 +63,7 @@ export async function execute(interaction) {
   if (subcommand === 'link') {
     let url = interaction.options.getString('url').trim();
 
-    const urlRegex = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/i;
+    const urlRegex = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.\-\?\&\=\#\%\+\:\@\~]*)\/?$/i;
     if (!urlRegex.test(url)) {
       await interaction.reply({ 
         content: 'Error: Please provide a valid URL link (e.g., https://example.com).', 
