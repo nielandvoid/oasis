@@ -221,7 +221,7 @@ async function handleApprove(interaction) {
 
   const publicEmbed = new EmbedBuilder()
     .setTitle(title)
-    .setColor('#2ecc71')
+    .setColor('#56865f')
     .setDescription(description)
     .addFields(
       { name: 'Contributor', value: `<@${submitterId}>`, inline: true }
@@ -294,7 +294,7 @@ async function handleApprove(interaction) {
     const guildName = interaction.guild?.name || 'the server';
     const dmEmbed = new EmbedBuilder()
       .setTitle('Resource Approved & Published!')
-      .setColor('#2ecc71')
+      .setColor('#56865f')
       .setDescription(`Your submission **"${title}"** has been approved and published in **${guildName}**!`)
       .setTimestamp();
 
@@ -324,7 +324,7 @@ async function handleApprove(interaction) {
   }
 
   const approvedEmbed = EmbedBuilder.from(originalEmbed)
-    .setColor('#2ecc71')
+    .setColor('#56865f')
     .setTitle('Resource Approved')
     .setDescription(`This resource was approved and published by ${interaction.user.tag}.`)
     .setFooter({ text: `Approved by ${interaction.user.tag}` });
@@ -384,7 +384,7 @@ async function handleRejectSubmit(interaction, messageId) {
     const guildName = interaction.guild?.name || 'the server';
     const dmEmbed = new EmbedBuilder()
       .setTitle('Resource Submission Update')
-      .setColor('#e74c3c')
+      .setColor('#7a3f38')
       .setDescription(`Your resource submission **"${title}"** in **${guildName}** was rejected by the moderators.`)
       .addFields({ name: 'Reason', value: reason })
       .setTimestamp();
@@ -392,7 +392,7 @@ async function handleRejectSubmit(interaction, messageId) {
   }
 
   const rejectedEmbed = EmbedBuilder.from(originalEmbed)
-    .setColor('#e74c3c')
+    .setColor('#7a3f38')
     .setTitle('Resource Rejected')
     .setDescription(`This resource was rejected by ${interaction.user.tag}.`)
     .addFields({ name: 'Rejection Reason', value: reason })
