@@ -4,20 +4,24 @@ import {
   ButtonBuilder, 
   ButtonStyle, 
   ModalBuilder, 
-  TextInputBuilder, 
+  TextInputBuilder,
   TextInputStyle,
+  LabelBuilder,
+  StringSelectMenuBuilder,
   PermissionFlagsBits,
   MessageFlags,
   ChannelType
 } from 'discord.js';
 import { getGuildConfig } from '../database.js';
 
+const MAX_TAGS = 5;
+
 export async function handleInteraction(interaction) {
   if (interaction.isButton()) {
-    const [action, type, tagId] = interaction.customId.split(':');
-    
+    const [action, type] = interaction.customId.split(':');
+
     if (action === 'write-desc') {
-      await handleWriteDescClick(interaction, type, tagId);
+      await handleWriteDescClick(interaction, type);
       return;
     }
     
@@ -34,8 +38,8 @@ export async function handleInteraction(interaction) {
 
   if (interaction.isModalSubmit()) {
     if (interaction.customId.startsWith('desc-modal:')) {
-      const [, type, tagId] = interaction.customId.split(':');
-      await handleDescSubmit(interaction, type, tagId);
+      const [, type] = interaction.customId.split(':');
+      await handleDescSubmit(interaction, type);
       return;
     }
     
@@ -47,27 +51,51 @@ export async function handleInteraction(interaction) {
   }
 }
 
-async function handleWriteDescClick(interaction, type, tagId) {
+async function handleWriteDescClick(interaction, type) {
   const modal = new ModalBuilder()
-    .setCustomId(`desc-modal:${type}:${tagId}`)
+    .setCustomId(`desc-modal:${type}`)
     .setTitle('Resource Description');
 
   const descInput = new TextInputBuilder()
     .setCustomId('resource-desc')
-    .setLabel('Description')
     .setStyle(TextInputStyle.Paragraph)
-    .setPlaceholder('Enter details about this resource...\nMarkdown, linebreaks, and bullet points are fully supported.')
+    .setPlaceholder('add a description; markdown / linebreaks / bullets are allowed')
     .setRequired(true)
     .setMaxLength(1000);
 
-  const row = new ActionRowBuilder().addComponents(descInput);
-  modal.addComponents(row);
+  modal.addLabelComponents(
+    new LabelBuilder().setLabel('Description').setTextInputComponent(descInput)
+  );
+
+  const config = await getGuildConfig(interaction.guildId);
+  const publicChannel = config?.publicChannelId
+    ? await interaction.client.channels.fetch(config.publicChannelId).catch(() => null)
+    : null;
+  const availableTags = publicChannel?.type === ChannelType.GuildForum ? publicChannel.availableTags : [];
+
+  if (availableTags.length > 0) {
+    const tagSelect = new StringSelectMenuBuilder()
+      .setCustomId('resource-tags')
+      .setPlaceholder('select one or more tags')
+      .setMinValues(1)
+      .setMaxValues(Math.min(MAX_TAGS, availableTags.length))
+      .setRequired(true)
+      .setOptions(availableTags.slice(0, 25).map(tag => ({ label: tag.name, value: tag.id })));
+
+    modal.addLabelComponents(
+      new LabelBuilder().setLabel('Tags').setStringSelectMenuComponent(tagSelect)
+    );
+  }
 
   await interaction.showModal(modal);
 }
 
-async function handleDescSubmit(interaction, type, tagId) {
+async function handleDescSubmit(interaction, type) {
   const description = interaction.fields.getTextInputValue('resource-desc');
+  const tagIds = interaction.fields.fields.has('resource-tags')
+    ? interaction.fields.getStringSelectValues('resource-tags')
+    : [];
+  const tagId = tagIds.length > 0 ? tagIds.join(',') : 'none';
   const originalEmbed = interaction.message.embeds[0];
   const title = originalEmbed.title.replace('Draft: ', '');
 
@@ -90,12 +118,13 @@ async function handleDescSubmit(interaction, type, tagId) {
     components: []
   });
 
-  let tagName = null;
+  let tagNames = [];
   if (tagId && tagId !== 'none' && publicChannelId) {
     const publicChannel = await interaction.client.channels.fetch(publicChannelId).catch(() => null);
     if (publicChannel && publicChannel.type === ChannelType.GuildForum) {
-      const tag = publicChannel.availableTags.find(t => t.id === tagId);
-      if (tag) tagName = tag.name;
+      tagNames = tagId.split(',')
+        .map(id => publicChannel.availableTags.find(t => t.id === id)?.name)
+        .filter(Boolean);
     }
   }
 
@@ -108,8 +137,8 @@ async function handleDescSubmit(interaction, type, tagId) {
       { name: 'Description', value: description, inline: false }
     );
 
-  if (tagName) {
-    reviewEmbed.addFields({ name: 'Selected Tag', value: tagName, inline: true });
+  if (tagNames.length > 0) {
+    reviewEmbed.addFields({ name: tagNames.length > 1 ? 'Selected Tags' : 'Selected Tag', value: tagNames.join(', '), inline: true });
   }
 
   reviewEmbed.setThumbnail(interaction.user.displayAvatarURL({ dynamic: true })).setTimestamp();
@@ -198,12 +227,12 @@ async function handleApprove(interaction) {
   const typeMatch = footerText.match(/Type: (link|file)/);
   const submitterMatch = footerText.match(/Submitter: (\d+)/);
   const sizeMatch = footerText.match(/Size: (\d+)/);
-  const tagMatch = footerText.match(/Tag: (\d+)/);
+  const tagMatch = footerText.match(/Tag: ([\d,]+)/);
 
   const type = typeMatch ? typeMatch[1] : 'link';
   const submitterId = submitterMatch ? submitterMatch[1] : null;
   const fileSize = sizeMatch ? parseInt(sizeMatch[1]) : 0;
-  const tagId = tagMatch ? tagMatch[1] : null;
+  const tagIds = tagMatch ? tagMatch[1].split(',').filter(Boolean) : [];
 
   const title = originalEmbed.fields.find(f => f.name === 'Title').value;
   const description = originalEmbed.fields.find(f => f.name === 'Description').value;
@@ -274,8 +303,8 @@ async function handleApprove(interaction) {
         name: title.length > 95 ? title.substring(0, 95) + '...' : title,
         message: messagePayload
       };
-      if (tagId && tagId !== 'none') {
-        options.appliedTags = [tagId];
+      if (tagIds.length > 0) {
+        options.appliedTags = tagIds;
       }
       const thread = await publicChannel.threads.create(options);
       publishedUrl = thread.url;

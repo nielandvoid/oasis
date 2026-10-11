@@ -1,11 +1,11 @@
-import { Client, GatewayIntentBits, REST, Routes, Events, MessageFlags, ChannelType, ActivityType } from 'discord.js';
+import { Client, GatewayIntentBits, REST, Routes, Events, MessageFlags, ActivityType } from 'discord.js';
 import dotenv from 'dotenv';
 import { data as submitCommand, execute as executeSubmit } from './commands/submit.js';
 import { data as configureCommand, execute as executeConfigure } from './commands/configure.js';
 import { data as pingCommand, execute as executePing } from './commands/ping.js';
 import { data as helpCommand, execute as executeHelp } from './commands/help.js';
 import { handleInteraction } from './handlers/review.js';
-import { connectDatabase, getGuildConfig } from './database.js';
+import { connectDatabase } from './database.js';
 import http from 'http';
 
 dotenv.config();
@@ -35,8 +35,7 @@ const client = new Client({
 
 client.once(Events.ClientReady, async () => {
   console.log(`Logged in as ${client.user.tag}!`);
-  
-  // Establish database connection
+
   await connectDatabase();
 
   const rest = new REST({ version: '10' }).setToken(token);
@@ -62,25 +61,6 @@ client.once(Events.ClientReady, async () => {
 
 client.on('interactionCreate', async (interaction) => {
   try {
-    if (interaction.isAutocomplete()) {
-      if (interaction.commandName === 'submit') {
-        const focusedValue = interaction.options.getFocused();
-        const config = await getGuildConfig(interaction.guildId);
-        if (!config || !config.publicChannelId) {
-          return interaction.respond([]);
-        }
-        const channel = await interaction.guild.channels.fetch(config.publicChannelId).catch(() => null);
-        if (channel && channel.type === ChannelType.GuildForum) {
-          const tags = channel.availableTags || [];
-          const filtered = tags.filter(tag => tag.name.toLowerCase().includes(focusedValue.toLowerCase()));
-          return interaction.respond(
-            filtered.slice(0, 25).map(tag => ({ name: tag.name, value: tag.id }))
-          );
-        }
-      }
-      return interaction.respond([]);
-    }
-
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === 'submit') {
         await executeSubmit(interaction);
@@ -112,7 +92,6 @@ client.on('interactionCreate', async (interaction) => {
 
 client.login(token);
 
-// Keep-alive HTTP server to prevent hibernation
 const port = process.env.SERVER_PORT || process.env.PORT || 3000;
 http.createServer((req, res) => {
   const time = new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false });

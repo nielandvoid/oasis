@@ -14,9 +14,6 @@ export const data = new SlashCommandBuilder()
       .addStringOption(option =>
         option.setName('url').setDescription('The URL link of the resource').setRequired(true)
       )
-      .addStringOption(option =>
-        option.setName('tag').setDescription('Select a tag for this resource (Forum channels only)').setAutocomplete(true).setRequired(true)
-      )
   )
   .addSubcommand(subcommand =>
     subcommand
@@ -27,9 +24,6 @@ export const data = new SlashCommandBuilder()
       )
       .addAttachmentOption(option =>
         option.setName('file').setDescription('Upload the file/attachment').setRequired(true)
-      )
-      .addStringOption(option =>
-        option.setName('tag').setDescription('Select a tag for this resource (Forum channels only)').setAutocomplete(true).setRequired(true)
       )
       .addAttachmentOption(option =>
         option.setName('file2').setDescription('Upload a second file/attachment (optional)')
@@ -65,9 +59,9 @@ export async function execute(interaction) {
 
     const urlRegex = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.\-\?\&\=\#\%\+\:\@\~]*)\/?$/i;
     if (!urlRegex.test(url)) {
-      await interaction.reply({ 
-        content: 'Error: Please provide a valid URL link (e.g., https://example.com).', 
-        flags: MessageFlags.Ephemeral 
+      await interaction.reply({
+        content: 'Error: Please provide a valid URL link (e.g., https://example.com).',
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -76,17 +70,15 @@ export async function execute(interaction) {
       url = 'https://' + url;
     }
 
-    const tagId = interaction.options.getString('tag') || 'none';
-
     const draftEmbed = new EmbedBuilder()
       .setTitle(`Draft: ${title}`)
       .setColor('#ffffff')
-      .setDescription('Your submission is almost ready. Click below to add a description (markdown and linebreaks supported).')
+      .setDescription('Your submission is almost ready. Click below to add a description and tags (markdown and linebreaks supported).')
       .addFields({ name: 'URL', value: url });
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`write-desc:link:${tagId}`)
+        .setCustomId('write-desc:link')
         .setLabel('Write Description')
         .setStyle(ButtonStyle.Primary)
     );
@@ -102,12 +94,10 @@ export async function execute(interaction) {
       if (file) files.push(file);
     }
 
-    const tagId = interaction.options.getString('tag') || 'none';
-
     const draftEmbed = new EmbedBuilder()
       .setTitle(`Draft: ${title}`)
       .setColor('#ffffff')
-      .setDescription('Your submission is almost ready. Click below to add a description (markdown and linebreaks supported).');
+      .setDescription('Your submission is almost ready. Click below to add a description and tags (markdown and linebreaks supported).');
 
     const fields = [];
     files.forEach((file, idx) => {
@@ -121,15 +111,15 @@ export async function execute(interaction) {
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`write-desc:file:${tagId}`)
+        .setCustomId('write-desc:file')
         .setLabel('Write Description')
         .setStyle(ButtonStyle.Primary)
     );
 
-    await interaction.reply({ 
-      embeds: [draftEmbed], 
-      components: [row], 
-      flags: MessageFlags.Ephemeral 
+    await interaction.reply({
+      embeds: [draftEmbed],
+      components: [row],
+      flags: MessageFlags.Ephemeral
     });
   }
 }

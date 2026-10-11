@@ -4,7 +4,7 @@ a simple, multi-server resource curation bot for Discord. members submit link/fi
 built with node, discord.js, and mongodb.
 
 ## features
-- `/submit link` & `/submit file` subcommands (upload up to 5 files at once, with mandatory forum tags autocompleted dynamically)
+- `/submit link` & `/submit file` subcommands (upload up to 5 files at once, with a multi-select forum tag picker, up to 5 tags per submission)
 - modal description box (supports linebreaks & md)
 - auto-bypasses 10mb bot upload limit (links directly to cdn if >10mb)
 - mod approval panel with buttons (approve/reject reason)
