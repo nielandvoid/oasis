@@ -95,7 +95,6 @@ async function handleDescSubmit(interaction, type) {
   const tagIds = interaction.fields.fields.has('resource-tags')
     ? interaction.fields.getStringSelectValues('resource-tags')
     : [];
-  const tagId = tagIds.length > 0 ? tagIds.join(',') : 'none';
   const originalEmbed = interaction.message.embeds[0];
   const title = originalEmbed.title.replace('Draft: ', '');
 
@@ -119,10 +118,10 @@ async function handleDescSubmit(interaction, type) {
   });
 
   let tagNames = [];
-  if (tagId && tagId !== 'none' && publicChannelId) {
+  if (tagIds.length > 0 && publicChannelId) {
     const publicChannel = await interaction.client.channels.fetch(publicChannelId).catch(() => null);
     if (publicChannel && publicChannel.type === ChannelType.GuildForum) {
-      tagNames = tagId.split(',')
+      tagNames = tagIds
         .map(id => publicChannel.availableTags.find(t => t.id === id)?.name)
         .filter(Boolean);
     }
@@ -151,9 +150,8 @@ async function handleDescSubmit(interaction, type) {
     reviewEmbed.addFields({ name: 'URL / Link', value: url, inline: false });
     
     const footerParts = [`Oasis`, `Type: ${type}`, `Submitter: ${interaction.user.id}`];
-    if (tagId && tagId !== 'none') footerParts.push(`Tag: ${tagId}`);
-    reviewEmbed.setFooter({ text: footerParts.join(' // ') });
-    
+    reviewEmbed.setFooter({ text: footerParts.join(' / ') });
+
   } else if (type === 'file') {
     let idx = 1;
     while (true) {
@@ -178,8 +176,7 @@ async function handleDescSubmit(interaction, type) {
     
     const totalSize = files.reduce((acc, f) => acc + f.size, 0);
     const footerParts = [`Oasis`, `Type: ${type}`, `Submitter: ${interaction.user.id}`, `Size: ${totalSize}`];
-    if (tagId && tagId !== 'none') footerParts.push(`Tag: ${tagId}`);
-    reviewEmbed.setFooter({ text: footerParts.join(' // ') });
+    reviewEmbed.setFooter({ text: footerParts.join(' / ') });
   }
 
   const row = new ActionRowBuilder().addComponents(
@@ -227,12 +224,10 @@ async function handleApprove(interaction) {
   const typeMatch = footerText.match(/Type: (link|file)/);
   const submitterMatch = footerText.match(/Submitter: (\d+)/);
   const sizeMatch = footerText.match(/Size: (\d+)/);
-  const tagMatch = footerText.match(/Tag: ([\d,]+)/);
 
   const type = typeMatch ? typeMatch[1] : 'link';
   const submitterId = submitterMatch ? submitterMatch[1] : null;
   const fileSize = sizeMatch ? parseInt(sizeMatch[1]) : 0;
-  const tagIds = tagMatch ? tagMatch[1].split(',').filter(Boolean) : [];
 
   const title = originalEmbed.fields.find(f => f.name === 'Title').value;
   const description = originalEmbed.fields.find(f => f.name === 'Description').value;
@@ -247,6 +242,13 @@ async function handleApprove(interaction) {
   }
 
   const isForum = publicChannel.type === ChannelType.GuildForum;
+
+  const tagField = originalEmbed.fields.find(f => f.name === 'Selected Tag' || f.name === 'Selected Tags');
+  const tagIds = isForum && tagField
+    ? publicChannel.availableTags
+        .filter(t => `, ${tagField.value}, `.includes(`, ${t.name}, `))
+        .map(t => t.id)
+    : [];
 
   const publicEmbed = new EmbedBuilder()
     .setTitle(title)
