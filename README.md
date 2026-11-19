@@ -1,4 +1,4 @@
-# oasis
+# Oasis
 ![visual](oasis_visual.png)
 
 2026-11-19: [changelog](changelog.md)
