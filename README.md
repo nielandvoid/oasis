@@ -1,7 +1,7 @@
 # Oasis
 ![visual](oasis_visual.png)
 
-2026-11-19: [changelog](changelog.md)
+`2026-11-19`: [changelog](changelog.md)  
 resource curation bot for Discord: members submit files / link -> mod-only review channel -> moderators approve / reject: if approved -> published to a text / forum; -> member gets notified whether approved / rejected.
 
 built with node, discord.js and mongodb.
