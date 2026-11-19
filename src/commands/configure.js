@@ -1,10 +1,13 @@
-import { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ChannelType, MessageFlags } from 'discord.js';
-import { setGuildConfig, getGuildConfig } from '../database.js';
+import { SlashCommandBuilder, InteractionContextType, PermissionFlagsBits, ChannelType, MessageFlags } from 'discord.js';
+import { setGuildConfig, getGuildConfig, numberResources } from '../database.js';
+import { configView } from '../ui.js';
+import { backfill } from '../backfill.js';
 
 export const data = new SlashCommandBuilder()
   .setName('configure')
   .setDescription('Configure Oasis settings for this server')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  .setContexts(InteractionContextType.Guild)
   .addSubcommand(subcommand =>
     subcommand
       .setName('review-channel')
@@ -31,17 +34,37 @@ export const data = new SlashCommandBuilder()
   )
   .addSubcommand(subcommand =>
     subcommand
+      .setName('reviewer-role')
+      .setDescription('Set the role that is pinged when a submission needs review')
+      .addRoleOption(option =>
+        option
+          .setName('role')
+          .setDescription('The reviewer role (leave empty to stop pinging)')
+      )
+  )
+  .addSubcommand(subcommand =>
+    subcommand
       .setName('view')
       .setDescription('View the current configurations for this server')
+  )
+  .addSubcommand(subcommand =>
+    subcommand
+      .setName('reindex')
+      .setDescription('Add resources published before /search existed to the search index')
   );
 
 export async function execute(interaction) {
+  if (!interaction.guildId || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+    await interaction.reply({ content: 'You need the **Manage Server** permission to use this command.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
   const subcommand = interaction.options.getSubcommand();
   const guildId = interaction.guildId;
 
   if (subcommand === 'review-channel') {
     const channel = interaction.options.getChannel('channel');
-    
+
     const success = await setGuildConfig(guildId, { reviewChannelId: channel.id });
     if (success) {
       await interaction.reply({
@@ -56,7 +79,7 @@ export async function execute(interaction) {
     }
   } else if (subcommand === 'public-channel') {
     const channel = interaction.options.getChannel('channel');
-    
+
     const success = await setGuildConfig(guildId, { publicChannelId: channel.id });
     if (success) {
       await interaction.reply({
@@ -69,27 +92,33 @@ export async function execute(interaction) {
         flags: MessageFlags.Ephemeral
       });
     }
+  } else if (subcommand === 'reviewer-role') {
+    const role = interaction.options.getRole('role');
+    const success = await setGuildConfig(guildId, { reviewerRoleId: role?.id ?? null });
+    await interaction.reply({
+      content: !success ? 'Failed to save configuration. Database error.'
+        : role ? `Submissions will now ping ${role} in the review channel.` : 'Submissions will no longer ping a role.',
+      flags: MessageFlags.Ephemeral
+    });
   } else if (subcommand === 'view') {
     const config = await getGuildConfig(guildId);
-    
-    const embed = new EmbedBuilder()
-      .setTitle('Oasis Configuration')
-      .setColor('#ffffff')
-      .setDescription('Current server configuration for Oasis:')
-      .addFields(
-        { 
-          name: 'Review Channel', 
-          value: config?.reviewChannelId ? `<#${config.reviewChannelId}>` : '❌ Not configured', 
-          inline: true 
-        },
-        { 
-          name: 'Public Channel', 
-          value: config?.publicChannelId ? `<#${config.publicChannelId}>` : '❌ Not configured', 
-          inline: true 
-        }
-      )
-      .setTimestamp();
 
-    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+    await interaction.reply(configView(config, interaction.guild.iconURL({ extension: 'png', size: 256 })));
+  } else if (subcommand === 'reindex') {
+    const config = await getGuildConfig(guildId);
+    const channel = config?.publicChannelId ? await interaction.client.channels.fetch(config.publicChannelId).catch(() => null) : null;
+    if (!channel) {
+      await interaction.reply({ content: 'Set a public channel first with `/configure public-channel`.', flags: MessageFlags.Ephemeral });
+      return;
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      const { added, skipped } = await backfill(channel, guildId, interaction.client.user.id);
+      const numbered = await numberResources(guildId);
+      await interaction.editReply({ content: `Indexed **${added}** resource${added === 1 ? '' : 's'} from ${channel}${skipped ? ` (${skipped} already indexed)` : ''} and gave **${numbered}** a resource number.` });
+    } catch (error) {
+      console.error('Error reindexing resources:', error);
+      await interaction.editReply({ content: 'Could not read the public channel. Check that the bot can view it and read its history.' });
+    }
   }
 }

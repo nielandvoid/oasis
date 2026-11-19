@@ -1,5 +1,7 @@
-import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
-import { getGuildConfig } from '../database.js';
+import { SlashCommandBuilder, MessageFlags } from 'discord.js';
+import { getGuildConfig, createDraft } from '../database.js';
+import { draftView } from '../ui.js';
+import { normalizeUrl } from '../links.js';
 
 export const data = new SlashCommandBuilder()
   .setName('submit')
@@ -12,7 +14,19 @@ export const data = new SlashCommandBuilder()
         option.setName('title').setDescription('The title of the resource').setRequired(true).setMaxLength(100)
       )
       .addStringOption(option =>
-        option.setName('url').setDescription('The URL link of the resource').setRequired(true)
+        option.setName('url').setDescription('The URL link of the resource').setRequired(true).setMaxLength(2000)
+      )
+      .addStringOption(option =>
+        option.setName('url2').setDescription('A second link (optional)').setMaxLength(2000)
+      )
+      .addStringOption(option =>
+        option.setName('url3').setDescription('A third link (optional)').setMaxLength(2000)
+      )
+      .addStringOption(option =>
+        option.setName('url4').setDescription('A fourth link (optional)').setMaxLength(2000)
+      )
+      .addStringOption(option =>
+        option.setName('url5').setDescription('A fifth link (optional)').setMaxLength(2000)
       )
   )
   .addSubcommand(subcommand =>
@@ -39,87 +53,54 @@ export const data = new SlashCommandBuilder()
       )
   );
 
+async function reject(interaction, content) {
+  await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+}
+
 export async function execute(interaction) {
   const guildId = interaction.guildId;
   const config = await getGuildConfig(guildId);
 
   if (!config || !config.reviewChannelId || !config.publicChannelId) {
-    await interaction.reply({
-      content: 'Error: Oasis has not been configured on this server yet. Please ask an Administrator to run `/configure`.',
-      flags: MessageFlags.Ephemeral
-    });
+    await reject(interaction, 'Error: Oasis has not been configured on this server yet. Please ask an Administrator to run `/configure`.');
     return;
   }
 
   const subcommand = interaction.options.getSubcommand();
   const title = interaction.options.getString('title');
+  let draft;
 
   if (subcommand === 'link') {
-    let url = interaction.options.getString('url').trim();
-
-    const urlRegex = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.\-\?\&\=\#\%\+\:\@\~]*)\/?$/i;
-    if (!urlRegex.test(url)) {
-      await interaction.reply({
-        content: 'Error: Please provide a valid URL link (e.g., https://example.com).',
-        flags: MessageFlags.Ephemeral
-      });
+    const urls = [];
+    for (const name of ['url', 'url2', 'url3', 'url4', 'url5']) {
+      const raw = interaction.options.getString(name);
+      if (!raw) continue;
+      const url = normalizeUrl(raw);
+      if (!url) {
+        await reject(interaction, `Error: \`${name}\` does not look like a link. Paste the full address, for example https://example.com.`);
+        return;
+      }
+      if (!urls.includes(url)) urls.push(url);
+    }
+    if (!urls.length) {
+      await reject(interaction, 'Error: That does not look like a link. Paste the full address, for example https://example.com.');
       return;
     }
-
-    if (!/^https?:\/\//i.test(url)) {
-      url = 'https://' + url;
-    }
-
-    const draftEmbed = new EmbedBuilder()
-      .setTitle(`Draft: ${title}`)
-      .setColor('#ffffff')
-      .setDescription('Your submission is almost ready. Click below to add a description and tags (markdown and linebreaks supported).')
-      .addFields({ name: 'URL', value: url });
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('write-desc:link')
-        .setLabel('Write Description')
-        .setStyle(ButtonStyle.Primary)
-    );
-
-    await interaction.reply({ embeds: [draftEmbed], components: [row], flags: MessageFlags.Ephemeral });
-  } else if (subcommand === 'file') {
+    draft = { type: 'link', title, url: urls[0], urls };
+  } else {
     const files = [];
-    const firstFile = interaction.options.getAttachment('file');
-    if (firstFile) files.push(firstFile);
-
-    for (let i = 2; i <= 5; i++) {
-      const file = interaction.options.getAttachment(`file${i}`);
-      if (file) files.push(file);
+    for (const name of ['file', 'file2', 'file3', 'file4', 'file5']) {
+      const file = interaction.options.getAttachment(name);
+      if (file) files.push({ name: file.name, url: file.url, size: file.size });
     }
-
-    const draftEmbed = new EmbedBuilder()
-      .setTitle(`Draft: ${title}`)
-      .setColor('#ffffff')
-      .setDescription('Your submission is almost ready. Click below to add a description and tags (markdown and linebreaks supported).');
-
-    const fields = [];
-    files.forEach((file, idx) => {
-      fields.push(
-        { name: `File ${idx + 1} Name`, value: file.name },
-        { name: `File ${idx + 1} URL`, value: file.url },
-        { name: `File ${idx + 1} Size`, value: file.size.toString() }
-      );
-    });
-    draftEmbed.addFields(fields);
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('write-desc:file')
-        .setLabel('Write Description')
-        .setStyle(ButtonStyle.Primary)
-    );
-
-    await interaction.reply({
-      embeds: [draftEmbed],
-      components: [row],
-      flags: MessageFlags.Ephemeral
-    });
+    draft = { type: 'file', title, files };
   }
+
+  const draftId = await createDraft({ guildId, userId: interaction.user.id, ...draft });
+  if (!draftId) {
+    await reject(interaction, 'Failed to save your draft. Database error.');
+    return;
+  }
+
+  await interaction.reply(draftView({ draftId, ...draft }));
 }

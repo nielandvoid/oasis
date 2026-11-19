@@ -1,9 +1,6 @@
-import { 
-  EmbedBuilder, 
-  ActionRowBuilder, 
-  ButtonBuilder, 
-  ButtonStyle, 
-  ModalBuilder, 
+import {
+  ActionRowBuilder,
+  ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
   LabelBuilder,
@@ -12,24 +9,43 @@ import {
   MessageFlags,
   ChannelType
 } from 'discord.js';
-import { getGuildConfig } from '../database.js';
+import {
+  getGuildConfig,
+  getDraft,
+  saveSubmission,
+  claimSubmission,
+  finishSubmission,
+  releaseSubmission,
+  recordPublished,
+  findDuplicates,
+  nextResourceNumber,
+  updateResource
+} from '../database.js';
+import { legacyDraft, legacySubmission, legacyApproved, legacyRejected, legacyPublicEmbed } from '../legacy.js';
+import { reviewView, publicView, dmView, notice } from '../ui.js';
+import { bannerFile } from '../banner.js';
+import { linksOf } from '../links.js';
 
 const MAX_TAGS = 5;
+const MAX_ATTACH_SIZE = 10 * 1024 * 1024;
+const IMAGE = /\.(jpg|jpeg|png|gif|webp)$/i;
+const safeName = (name) => String(name).replace(/[^\w.-]/g, '_').slice(-80);
+const isImage = (attachment) => attachment.contentType?.startsWith('image/') || IMAGE.test(attachment.name);
 
 export async function handleInteraction(interaction) {
   if (interaction.isButton()) {
-    const [action, type] = interaction.customId.split(':');
+    const [action, type, draftId] = interaction.customId.split(':');
 
     if (action === 'write-desc') {
-      await handleWriteDescClick(interaction, type);
+      await handleWriteDescClick(interaction, type, draftId);
       return;
     }
-    
+
     if (interaction.customId === 'approve') {
       await handleApprove(interaction);
       return;
     }
-    
+
     if (interaction.customId === 'reject') {
       await handleRejectClick(interaction);
       return;
@@ -38,11 +54,11 @@ export async function handleInteraction(interaction) {
 
   if (interaction.isModalSubmit()) {
     if (interaction.customId.startsWith('desc-modal:')) {
-      const [, type] = interaction.customId.split(':');
-      await handleDescSubmit(interaction, type);
+      const [, type, draftId] = interaction.customId.split(':');
+      await handleDescSubmit(interaction, type, draftId);
       return;
     }
-    
+
     if (interaction.customId.startsWith('reject-modal:')) {
       const [, messageId] = interaction.customId.split(':');
       await handleRejectSubmit(interaction, messageId);
@@ -51,9 +67,19 @@ export async function handleInteraction(interaction) {
   }
 }
 
-async function handleWriteDescClick(interaction, type) {
+const iconOf = (interaction) => interaction.guild?.iconURL({ extension: 'png', size: 256 });
+const canReview = (interaction) => interaction.member?.permissions?.has(PermissionFlagsBits.ManageMessages);
+
+// containers can be refused in dms, so fall back to plain text
+async function dm(user, view, fallbackText) {
+  await user.send({ ...view, files: [bannerFile()] }).catch(async () => {
+    await user.send({ content: fallbackText }).catch(() => console.log(`Could not DM user ${user.id}`));
+  });
+}
+
+async function handleWriteDescClick(interaction, type, draftId) {
   const modal = new ModalBuilder()
-    .setCustomId(`desc-modal:${type}`)
+    .setCustomId(`desc-modal:${type}:${draftId ?? ''}`)
     .setTitle('Resource Description');
 
   const descInput = new TextInputBuilder()
@@ -90,13 +116,24 @@ async function handleWriteDescClick(interaction, type) {
   await interaction.showModal(modal);
 }
 
-async function handleDescSubmit(interaction, type) {
+async function handleDescSubmit(interaction, type, draftId) {
   const description = interaction.fields.getTextInputValue('resource-desc');
   const tagIds = interaction.fields.fields.has('resource-tags')
     ? interaction.fields.getStringSelectValues('resource-tags')
     : [];
-  const originalEmbed = interaction.message.embeds[0];
-  const title = originalEmbed.title.replace('Draft: ', '');
+
+  const legacy = interaction.message.embeds.length > 0;
+  const draft = legacy
+    ? legacyDraft(interaction.message.embeds[0], type)
+    : (draftId ? await getDraft(draftId) : null);
+
+  if (!draft || (draft.userId && draft.userId !== interaction.user.id)) {
+    await interaction.reply({
+      content: 'Error: This draft has expired. Please run `/submit` again.',
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
 
   const config = await getGuildConfig(interaction.guildId);
   const reviewChannelId = config?.reviewChannelId;
@@ -104,270 +141,229 @@ async function handleDescSubmit(interaction, type) {
   const reviewChannel = reviewChannelId ? await interaction.client.channels.fetch(reviewChannelId).catch(() => null) : null;
 
   if (!reviewChannel) {
-    await interaction.reply({ 
-      content: 'Error: The moderator review channel is not configured correctly. Please contact an administrator.', 
-      flags: MessageFlags.Ephemeral 
+    await interaction.reply({
+      content: 'Error: The moderator review channel is not configured correctly. Please contact an administrator.',
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
 
-  await interaction.update({ 
-    content: 'Thank you! Your resource has been submitted to the moderators for review.', 
-    embeds: [],
-    components: []
-  });
+  const thanks = 'Thank you! Your resource has been submitted to the moderators for review.';
+  await interaction.update(legacy ? { content: thanks, embeds: [], components: [] } : notice(thanks));
 
   let tagNames = [];
+  let validTagIds = [];
   if (tagIds.length > 0 && publicChannelId) {
     const publicChannel = await interaction.client.channels.fetch(publicChannelId).catch(() => null);
     if (publicChannel && publicChannel.type === ChannelType.GuildForum) {
-      tagNames = tagIds
-        .map(id => publicChannel.availableTags.find(t => t.id === id)?.name)
-        .filter(Boolean);
+      const tags = tagIds.map(id => publicChannel.availableTags.find(t => t.id === id)).filter(Boolean);
+      tagNames = tags.map(t => t.name);
+      validTagIds = tags.map(t => t.id);
     }
   }
 
-  const reviewEmbed = new EmbedBuilder()
-    .setTitle('New Resource Submission')
-    .setColor('#ffffff')
-    .setDescription(`A new resource has been submitted for review.`)
-    .addFields(
-      { name: 'Title', value: title, inline: false },
-      { name: 'Description', value: description, inline: false }
-    );
+  const files = (draft.files ?? []).map(f => ({ name: f.name, url: f.url, size: f.size, attached: f.size <= MAX_ATTACH_SIZE }));
+  const sub = {
+    type,
+    guildId: interaction.guildId,
+    submitterId: interaction.user.id,
+    title: draft.title,
+    description,
+    tags: tagNames,
+    tagIds: validTagIds,
+    ...(type === 'link' ? { url: linksOf(draft)[0], urls: linksOf(draft) } : { files })
+  };
 
-  if (tagNames.length > 0) {
-    reviewEmbed.addFields({ name: tagNames.length > 1 ? 'Selected Tags' : 'Selected Tag', value: tagNames.join(', '), inline: true });
+  const duplicates = await findDuplicates(interaction.guildId, sub);
+  if (duplicates.length) {
+    sub.duplicates = duplicates.map(d => ({
+      title: d.title,
+      status: d.status,
+      link: d.link ?? (d.status === 'approved' ? null : `https://discord.com/channels/${interaction.guildId}/${reviewChannelId}/${d.id}`)
+    }));
   }
 
-  reviewEmbed.setThumbnail(interaction.user.displayAvatarURL({ dynamic: true })).setTimestamp();
+  const uploads = type === 'file'
+    ? files.map((f, i) => (f.attached ? { attachment: f.url, name: `file-${i + 1}-${safeName(f.name)}` } : null)).filter(Boolean)
+    : [];
 
-  let url = null;
-  const files = [];
-
-  if (type === 'link') {
-    url = originalEmbed.fields.find(f => f.name === 'URL').value;
-    reviewEmbed.addFields({ name: 'URL / Link', value: url, inline: false });
-    
-    const footerParts = [`Oasis`, `Type: ${type}`, `Submitter: ${interaction.user.id}`];
-    reviewEmbed.setFooter({ text: footerParts.join(' / ') });
-
-  } else if (type === 'file') {
-    let idx = 1;
-    while (true) {
-      const nameField = originalEmbed.fields.find(f => f.name === `File ${idx} Name`);
-      const urlField = originalEmbed.fields.find(f => f.name === `File ${idx} URL`);
-      const sizeField = originalEmbed.fields.find(f => f.name === `File ${idx} Size`);
-      if (!nameField || !urlField || !sizeField) break;
-      files.push({
-        name: nameField.value,
-        url: urlField.value,
-        size: parseInt(sizeField.value) || 0
-      });
-      idx++;
-    }
-
-    files.forEach((file, index) => {
-      reviewEmbed.addFields(
-        { name: `File ${index + 1} Name`, value: file.name, inline: false },
-        { name: `File ${index + 1} URL`, value: file.url, inline: false }
-      );
-    });
-    
-    const totalSize = files.reduce((acc, f) => acc + f.size, 0);
-    const footerParts = [`Oasis`, `Type: ${type}`, `Submitter: ${interaction.user.id}`, `Size: ${totalSize}`];
-    reviewEmbed.setFooter({ text: footerParts.join(' / ') });
-  }
-
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('approve')
-      .setLabel('Approve & Publish')
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId('reject')
-      .setLabel('Reject')
-      .setStyle(ButtonStyle.Danger)
-  );
-
-  const messageOptions = { embeds: [reviewEmbed], components: [row] };
-  
-  if (type === 'file' && files.length > 0) {
-    const filesToAttach = files.filter(f => f.size <= 10 * 1024 * 1024).map(f => ({ attachment: f.url, name: f.name }));
-    if (filesToAttach.length > 0) {
-      messageOptions.files = filesToAttach;
-    }
-  }
+  const view = reviewView(sub, {
+    avatarUrl: interaction.user.displayAvatarURL({ extension: 'png', size: 256 }),
+    attached: uploads.map(u => u.name),
+    ping: config.reviewerRoleId
+  });
 
   try {
-    await reviewChannel.send(messageOptions);
+    // the role ping is the one mention allowed through
+    const sent = await reviewChannel.send({
+      ...view,
+      ...(config.reviewerRoleId ? { allowedMentions: { parse: [], roles: [config.reviewerRoleId] } } : {}),
+      ...(uploads.length > 0 ? { files: uploads } : {})
+    });
+    if (!await saveSubmission(sent.id, sub)) {
+      await sent.delete().catch(() => null);
+      throw new Error('could not save the submission');
+    }
+    if (duplicates.length) {
+      const guildName = interaction.guild?.name || 'the server';
+      await dm(interaction.user, dmView('duplicate', { title: sub.title, guildName, guildIconUrl: iconOf(interaction), duplicates: sub.duplicates }),
+        `Your submission "${sub.title}" in ${guildName} looks like a resource that already exists. It was still sent to the moderators, who will decide whether to publish it.`);
+    }
   } catch (error) {
     console.error('Error sending submission to review channel:', error);
-    await interaction.followUp({ 
-      content: 'Error: Failed to deliver your submission to the moderators. Please try again.', 
-      flags: MessageFlags.Ephemeral 
+    await interaction.followUp({
+      content: 'Error: Failed to deliver your submission to the moderators. Please try again.',
+      flags: MessageFlags.Ephemeral
     }).catch(() => null);
   }
 }
 
+function attachmentsFor(sub, message, legacy) {
+  const attachments = [...message.attachments.values()];
+  let next = 0;
+  return (sub.files ?? []).map(file => {
+    const attachment = legacy ? attachments.find(a => a.name === file.name) : (file.attached ? attachments[next++] : null);
+    return { ...file, attachment: attachment ?? null };
+  });
+}
+
 async function handleApprove(interaction) {
-  if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+  if (!canReview(interaction)) {
     await interaction.reply({ content: 'You do not have permission to review resources.', flags: MessageFlags.Ephemeral });
     return;
   }
 
   await interaction.deferUpdate();
 
-  const originalEmbed = interaction.message.embeds[0];
-  const footerText = originalEmbed.footer.text;
-
-  const typeMatch = footerText.match(/Type: (link|file)/);
-  const submitterMatch = footerText.match(/Submitter: (\d+)/);
-  const sizeMatch = footerText.match(/Size: (\d+)/);
-
-  const type = typeMatch ? typeMatch[1] : 'link';
-  const submitterId = submitterMatch ? submitterMatch[1] : null;
-  const fileSize = sizeMatch ? parseInt(sizeMatch[1]) : 0;
-
-  const title = originalEmbed.fields.find(f => f.name === 'Title').value;
-  const description = originalEmbed.fields.find(f => f.name === 'Description').value;
+  const legacy = interaction.message.embeds.length > 0;
+  const messageId = interaction.message.id;
+  let sub;
+  if (legacy) {
+    sub = legacySubmission(interaction.message.embeds[0]);
+  } else {
+    sub = await claimSubmission(messageId);
+    if (!sub) {
+      await interaction.followUp({ content: 'This submission was already handled, or its data could not be found.', flags: MessageFlags.Ephemeral });
+      return;
+    }
+  }
+  if (!sub.number) {
+    sub.number = await nextResourceNumber(interaction.guildId);
+    if (sub.number && !legacy) await updateResource(messageId, { number: sub.number });
+  }
+  const release = () => (legacy ? null : releaseSubmission(messageId));
 
   const config = await getGuildConfig(interaction.guildId);
   const publicChannelId = config?.publicChannelId;
   const publicChannel = publicChannelId ? await interaction.client.channels.fetch(publicChannelId).catch(() => null) : null;
 
   if (!publicChannel) {
+    await release();
     await interaction.followUp({ content: 'Error: Public channel not found. Could not publish.', flags: MessageFlags.Ephemeral });
     return;
   }
 
   const isForum = publicChannel.type === ChannelType.GuildForum;
-
-  const tagField = originalEmbed.fields.find(f => f.name === 'Selected Tag' || f.name === 'Selected Tags');
-  const tagIds = isForum && tagField
-    ? publicChannel.availableTags
-        .filter(t => `, ${tagField.value}, `.includes(`, ${t.name}, `))
-        .map(t => t.id)
+  const tagIds = isForum
+    ? (sub.tagIds?.length
+      ? sub.tagIds
+      : publicChannel.availableTags.filter(t => sub.tags.includes(t.name)).map(t => t.id))
     : [];
 
-  const publicEmbed = new EmbedBuilder()
-    .setTitle(title)
-    .setColor('#56865f')
-    .setDescription(description)
-    .addFields(
-      { name: 'Contributor', value: `<@${submitterId}>`, inline: true }
-    )
-    .setFooter({ text: `Published via Oasis` })
-    .setTimestamp();
+  const submitter = await interaction.client.users.fetch(sub.submitterId).catch(() => null);
+  const resolved = sub.type === 'file' ? attachmentsFor(sub, interaction.message, legacy) : [];
 
-  const filesOption = [];
-
-  if (type === 'link') {
-    const url = originalEmbed.fields.find(f => f.name === 'URL / Link').value;
-    publicEmbed.setURL(url);
-    publicEmbed.addFields({ name: 'Link', value: `[Visit Resource](${url})`, inline: true });
-  } else if (type === 'file') {
-    const files = [];
-    let idx = 1;
-    while (true) {
-      const nameField = originalEmbed.fields.find(f => f.name === `File ${idx} Name`);
-      const urlField = originalEmbed.fields.find(f => f.name === `File ${idx} URL`);
-      if (!nameField || !urlField) break;
-      files.push({ name: nameField.value, url: urlField.value });
-      idx++;
+  const images = [];
+  const attached = [];
+  const large = [];
+  const uploads = [];
+  resolved.forEach((file, i) => {
+    if (!file.attachment) {
+      large.push(file);
+      return;
     }
+    const name = `file-${i + 1}-${safeName(file.attachment.name)}`;
+    uploads.push({ attachment: file.attachment.url, name });
+    (isImage(file.attachment) ? images : attached).push(name);
+  });
 
-    files.forEach((file, index) => {
-      const attachment = interaction.message.attachments.find(att => att.name === file.name);
-      if (attachment) {
-        const isImage = attachment.contentType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(attachment.name);
-        if (isImage && files.length === 1) {
-          publicEmbed.setImage(`attachment://${attachment.name}`);
-        } else {
-          publicEmbed.addFields({ name: `Attachment ${index + 1}`, value: `[Download ${attachment.name}](${attachment.url})`, inline: true });
-        }
-        filesOption.push({ attachment: attachment.url, name: attachment.name });
-      } else {
-        publicEmbed.addFields({ name: `Attachment ${index + 1} (Large File)`, value: `[Download ${file.name}](${file.url})`, inline: true });
-      }
-    });
-  }
+  const v2 = publicView({ ...sub, files: resolved.length > 0 ? resolved : sub.files }, {
+    avatarUrl: submitter?.displayAvatarURL({ extension: 'png', size: 256 }),
+    images,
+    attached,
+    large,
+    bookmarkId: messageId
+  });
+  const v2Payload = { ...v2, ...(uploads.length > 0 ? { files: uploads } : {}) };
 
-  let publishedUrl = null;
-  try {
-    const messagePayload = { embeds: [publicEmbed] };
-    if (filesOption.length > 0) {
-      messagePayload.files = filesOption;
-    }
-
+  const publish = async (payload) => {
     if (isForum) {
-      const options = {
-        name: title.length > 95 ? title.substring(0, 95) + '...' : title,
-        message: messagePayload
-      };
-      if (tagIds.length > 0) {
-        options.appliedTags = tagIds;
-      }
-      const thread = await publicChannel.threads.create(options);
-      publishedUrl = thread.url;
-    } else {
-      const msg = await publicChannel.send(messagePayload);
-      publishedUrl = msg.url;
+      const thread = await publicChannel.threads.create({
+        name: sub.title.length > 95 ? sub.title.substring(0, 95) + '...' : sub.title,
+        message: payload,
+        ...(tagIds.length > 0 ? { appliedTags: tagIds } : {})
+      });
+      return { url: thread.url, threadId: thread.id, messageId: thread.id };
     }
+    const sent = await publicChannel.send(payload);
+    return { url: sent.url, messageId: sent.id };
+  };
+
+  // containers can be refused as a thread starter, so retry as an embed
+  let posted = null;
+  let v2Post = true;
+  try {
+    posted = await publish(v2Payload);
   } catch (error) {
-    console.error('Error publishing resource:', error);
-    await interaction.followUp({ content: 'Failed to publish to the public channel. Check bot permissions.', flags: MessageFlags.Ephemeral });
-    return;
+    console.error('Publishing with the v2 layout failed, retrying as an embed:', error.message);
+    try {
+      const { embed, filesOption } = legacyPublicEmbed(sub, resolved.filter(f => f.attachment).map(f => ({ name: f.name, url: f.attachment.url, contentType: f.attachment.contentType })));
+      posted = await publish({ embeds: [embed], ...(filesOption.length > 0 ? { files: filesOption } : {}) });
+      v2Post = false;
+    } catch (fallbackError) {
+      console.error('Error publishing resource:', fallbackError);
+      await release();
+      await interaction.followUp({ content: 'Failed to publish to the public channel. Check bot permissions.', flags: MessageFlags.Ephemeral });
+      return;
+    }
   }
 
-  const submitter = await interaction.client.users.fetch(submitterId).catch(() => null);
+  const publishedUrl = posted.url;
+  const post = {
+    channelId: publicChannel.id,
+    threadId: posted.threadId ?? null,
+    messageId: posted.messageId,
+    v2: v2Post,
+    images,
+    attached,
+    large: resolved.map((f, i) => (f.attachment ? null : i)).filter(i => i !== null)
+  };
+
+  const reviewed = { ...sub, files: resolved.map(f => ({ name: f.name, size: f.size, url: f.attachment?.url ?? f.url })) };
+
   if (submitter) {
     const guildName = interaction.guild?.name || 'the server';
-    const dmEmbed = new EmbedBuilder()
-      .setTitle('Resource Approved & Published!')
-      .setColor('#56865f')
-      .setDescription(`Your submission **"${title}"** has been approved and published in **${guildName}**!`)
-      .setTimestamp();
-
-    if (publishedUrl) {
-      dmEmbed.addFields({ name: 'Resource Post', value: `[Go to Post](${publishedUrl})` });
-    }
-
-    if (type === 'link') {
-      const url = originalEmbed.fields.find(f => f.name === 'URL / Link').value;
-      dmEmbed.addFields({ name: 'Link', value: url });
-    } else if (type === 'file') {
-      const files = [];
-      let idx = 1;
-      while (true) {
-        const nameField = originalEmbed.fields.find(f => f.name === `File ${idx} Name`);
-        const urlField = originalEmbed.fields.find(f => f.name === `File ${idx} URL`);
-        if (!nameField || !urlField) break;
-        files.push({ name: nameField.value, url: urlField.value });
-        idx++;
-      }
-      files.forEach((file, index) => {
-        dmEmbed.addFields({ name: `Attachment ${index + 1}`, value: `[Download ${file.name}](${file.url})` });
-      });
-    }
-
-    await submitter.send({ embeds: [dmEmbed] }).catch(() => console.log(`Could not DM user ${submitterId}`));
+    await dm(submitter, dmView('approved', {
+      title: sub.title,
+      guildName,
+      guildIconUrl: iconOf(interaction),
+      publishedUrl,
+      urls: sub.type === 'link' ? linksOf(sub) : [],
+      files: reviewed.files
+    }), `Your submission "${sub.title}" has been approved and published in ${guildName}! ${publishedUrl ?? ''}`.trim());
   }
 
-  const approvedEmbed = EmbedBuilder.from(originalEmbed)
-    .setColor('#56865f')
-    .setTitle('Resource Approved')
-    .setDescription(`This resource was approved and published by ${interaction.user.tag}.`)
-    .setFooter({ text: `Approved by ${interaction.user.tag}` });
-
-  await interaction.editReply({
-    embeds: [approvedEmbed],
-    components: []
-  });
+  if (legacy) {
+    await interaction.editReply({ embeds: [legacyApproved(interaction.message.embeds[0], interaction.user.tag)], components: [] });
+    await recordPublished(messageId, { ...reviewed, guildId: interaction.guildId, publishedUrl, post, reviewedBy: interaction.user.id });
+  } else {
+    await interaction.editReply(reviewView(reviewed, { status: 'approved', by: interaction.user.tag }));
+    await finishSubmission(messageId, 'approved', { publishedUrl, post, reviewedBy: interaction.user.id, files: reviewed.files });
+  }
 }
 
 async function handleRejectClick(interaction) {
-  if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+  if (!canReview(interaction)) {
     await interaction.reply({ content: 'You do not have permission to review resources.', flags: MessageFlags.Ephemeral });
     return;
   }
@@ -380,7 +376,7 @@ async function handleRejectClick(interaction) {
     .setCustomId('reject-reason')
     .setLabel('Reason for Rejection')
     .setStyle(TextInputStyle.Paragraph)
-    .setPlaceholder('Enter why this resource is being rejected (sent to submitter)...')
+    .setPlaceholder('reason the rejection (sent to contributor)')
     .setRequired(true)
     .setMaxLength(500);
 
@@ -391,46 +387,46 @@ async function handleRejectClick(interaction) {
 }
 
 async function handleRejectSubmit(interaction, messageId) {
+  if (!canReview(interaction)) {
+    await interaction.reply({ content: 'You do not have permission to review resources.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
   await interaction.deferUpdate();
 
   const reason = interaction.fields.getTextInputValue('reject-reason');
-  const reviewChannel = interaction.channel;
-  
-  const originalMessage = await reviewChannel.messages.fetch(messageId).catch(() => null);
+  const originalMessage = await interaction.channel.messages.fetch(messageId).catch(() => null);
   if (!originalMessage) {
     await interaction.followUp({ content: 'Original review message could not be found.', flags: MessageFlags.Ephemeral });
     return;
   }
 
-  const originalEmbed = originalMessage.embeds[0];
-  const footerText = originalEmbed.footer.text;
-
-  const submitterMatch = footerText.match(/Submitter: (\d+)/);
-  const submitterId = submitterMatch ? submitterMatch[1] : null;
-
-  const title = originalEmbed.fields.find(f => f.name === 'Title').value;
-
-  const submitter = await interaction.client.users.fetch(submitterId).catch(() => null);
-  if (submitter) {
-    const guildName = interaction.guild?.name || 'the server';
-    const dmEmbed = new EmbedBuilder()
-      .setTitle('Resource Submission Update')
-      .setColor('#7a3f38')
-      .setDescription(`Your resource submission **"${title}"** in **${guildName}** was rejected by the moderators.`)
-      .addFields({ name: 'Reason', value: reason })
-      .setTimestamp();
-    await submitter.send({ embeds: [dmEmbed] }).catch(() => console.log(`Could not DM user ${submitterId}`));
+  const legacy = originalMessage.embeds.length > 0;
+  let sub;
+  if (legacy) {
+    sub = legacySubmission(originalMessage.embeds[0]);
+  } else {
+    sub = await claimSubmission(messageId);
+    if (!sub) {
+      await interaction.followUp({ content: 'This submission was already handled, or its data could not be found.', flags: MessageFlags.Ephemeral });
+      return;
+    }
   }
 
-  const rejectedEmbed = EmbedBuilder.from(originalEmbed)
-    .setColor('#7a3f38')
-    .setTitle('Resource Rejected')
-    .setDescription(`This resource was rejected by ${interaction.user.tag}.`)
-    .addFields({ name: 'Rejection Reason', value: reason })
-    .setFooter({ text: `Rejected by ${interaction.user.tag}` });
+  const submitter = await interaction.client.users.fetch(sub.submitterId).catch(() => null);
+  if (submitter) {
+    const guildName = interaction.guild?.name || 'the server';
+    await dm(submitter, dmView('rejected', { title: sub.title, guildName, guildIconUrl: iconOf(interaction), reason }),
+      `Your resource submission "${sub.title}" in ${guildName} was rejected by the moderators. Reason: ${reason}`);
+  }
 
-  await originalMessage.edit({
-    embeds: [rejectedEmbed],
-    components: []
-  });
+  if (legacy) {
+    await originalMessage.edit({ embeds: [legacyRejected(originalMessage.embeds[0], interaction.user.tag, reason)], components: [] });
+    return;
+  }
+
+  const resolved = attachmentsFor(sub, originalMessage, false);
+  const reviewed = { ...sub, files: resolved.map(f => ({ name: f.name, size: f.size, url: f.attachment?.url ?? f.url })) };
+  await originalMessage.edit(reviewView(reviewed, { status: 'rejected', by: interaction.user.tag, reason }));
+  await finishSubmission(messageId, 'rejected', { reason, reviewedBy: interaction.user.id });
 }

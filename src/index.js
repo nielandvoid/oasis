@@ -4,6 +4,12 @@ import { data as submitCommand, execute as executeSubmit } from './commands/subm
 import { data as configureCommand, execute as executeConfigure } from './commands/configure.js';
 import { data as pingCommand, execute as executePing } from './commands/ping.js';
 import { data as helpCommand, execute as executeHelp } from './commands/help.js';
+import { data as searchCommand, execute as executeSearch, paginate as paginateSearch } from './commands/search.js';
+import { data as leaderboardCommand, execute as executeLeaderboard } from './commands/leaderboard.js';
+import { data as mySubmissionsCommand, execute as executeMySubmissions, paginate as paginateMySubmissions } from './commands/mysubmissions.js';
+import { data as bookmarkCommand, execute as executeBookmark, paginate as paginateBookmarks, toggle as toggleBookmark } from './commands/bookmark.js';
+import { data as resourceCommand, execute as executeResource, handleUnpublish } from './commands/resource.js';
+import { handleAutocomplete } from './autocomplete.js';
 import { handleInteraction } from './handlers/review.js';
 import { connectDatabase } from './database.js';
 import http from 'http';
@@ -19,10 +25,9 @@ if (!token || !clientId) {
 }
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-  ],
+  // user text never pings; the reviewer ping opts in per message
+  allowedMentions: { parse: [], repliedUser: false },
+  intents: [GatewayIntentBits.Guilds],
   presence: {
     status: 'idle',
     activities: [{
@@ -42,10 +47,15 @@ client.once(Events.ClientReady, async () => {
 
   try {
     const commands = [
-      submitCommand.toJSON(), 
-      configureCommand.toJSON(), 
+      submitCommand.toJSON(),
+      configureCommand.toJSON(),
       pingCommand.toJSON(),
-      helpCommand.toJSON()
+      helpCommand.toJSON(),
+      searchCommand.toJSON(),
+      leaderboardCommand.toJSON(),
+      mySubmissionsCommand.toJSON(),
+      bookmarkCommand.toJSON(),
+      resourceCommand.toJSON()
     ];
 
     console.log('Registering global slash commands...');
@@ -70,22 +80,41 @@ client.on('interactionCreate', async (interaction) => {
         await executePing(interaction);
       } else if (interaction.commandName === 'help') {
         await executeHelp(interaction);
+      } else if (interaction.commandName === 'search') {
+        await executeSearch(interaction);
+      } else if (interaction.commandName === 'leaderboard') {
+        await executeLeaderboard(interaction);
+      } else if (interaction.commandName === 'mysubmissions') {
+        await executeMySubmissions(interaction);
+      } else if (interaction.commandName === 'bookmark') {
+        await executeBookmark(interaction);
+      } else if (interaction.commandName === 'resource') {
+        await executeResource(interaction);
       }
       return;
     }
 
-    await handleInteraction(interaction);
+    if (interaction.isAutocomplete()) {
+      await handleAutocomplete(interaction);
+      return;
+    }
 
+    if (interaction.isButton() && interaction.guild) {
+      const id = interaction.customId;
+      if (id.startsWith('search|')) return await paginateSearch(interaction);
+      if (id.startsWith('mine|')) return await paginateMySubmissions(interaction);
+      if (id.startsWith('bm|')) return await paginateBookmarks(interaction);
+      if (id.startsWith('bookmark:')) return await toggleBookmark(interaction);
+      if (id.startsWith('unpub:')) return await handleUnpublish(interaction);
+    }
+
+    await handleInteraction(interaction);
   } catch (error) {
     console.error('Error handling interaction:', error);
-    
-    if (interaction.isRepliable() || interaction.deferred) {
+
+    if (interaction.isRepliable()) {
       const msg = { content: 'An error occurred while executing this action.', flags: MessageFlags.Ephemeral };
-      if (interaction.deferred) {
-        await interaction.followUp(msg);
-      } else {
-        await interaction.reply(msg);
-      }
+      await (interaction.deferred || interaction.replied ? interaction.followUp(msg) : interaction.reply(msg)).catch(() => null);
     }
   }
 });
@@ -94,8 +123,6 @@ client.login(token);
 
 const port = process.env.SERVER_PORT || process.env.PORT || 3000;
 http.createServer((req, res) => {
-  const time = new Date().toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false });
-  console.log(`[${time}] 🏓 Ping received on keep-alive server (Path: ${req.url})`);
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Oasis is online!\n');
 }).listen(port, '0.0.0.0', () => {

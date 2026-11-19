@@ -1,4 +1,5 @@
-import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { SlashCommandBuilder } from 'discord.js';
+import { pingView } from '../ui.js';
 
 export const data = new SlashCommandBuilder()
   .setName('ping')
@@ -10,14 +11,5 @@ export async function execute(interaction) {
   const latency = sent.createdTimestamp - interaction.createdTimestamp;
   const apiLatency = Math.round(interaction.client.ws.ping);
 
-  const embed = new EmbedBuilder()
-    .setTitle('<:pong:1523716243868221631> Pong!')
-    .setColor('#ffffff')
-    .addFields(
-      { name: 'Bot Latency', value: `${latency}ms`, inline: true },
-      { name: 'API Latency', value: `${apiLatency}ms`, inline: true }
-    )
-    .setTimestamp();
-
-  await interaction.editReply({ embeds: [embed] });
+  await interaction.editReply(pingView(latency, apiLatency));
 }
