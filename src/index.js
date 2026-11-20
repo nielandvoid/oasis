@@ -13,6 +13,7 @@ import { handleAutocomplete } from './autocomplete.js';
 import { handleInteraction } from './handlers/review.js';
 import { connectDatabase } from './database.js';
 import http from 'http';
+import { monitorEventLoopDelay } from 'perf_hooks';
 
 dotenv.config();
 
@@ -70,17 +71,41 @@ client.once(Events.ClientReady, async () => {
 });
 
 client.rest.on('rateLimited', (info) => console.warn(`discord rate limit: ${info.method} ${info.route} waits ${info.timeToReset}ms (global: ${info.global})`));
+client.rest.on('response', (request, response) => {
+  if (request.route.startsWith('/webhooks/')) console.log(`discord ${request.method} ${request.route} answered ${response.status}`);
+});
 console.log(`node ${process.version}`);
+
+const loopDelay = monitorEventLoopDelay({ resolution: 20 });
+loopDelay.enable();
+setInterval(() => {
+  const worst = Math.round(loopDelay.max / 1e6);
+  if (worst > 500) console.warn(`process was blocked for up to ${worst}ms in the last 30s (ws ping ${Math.round(client.ws.ping)}ms)`);
+  loopDelay.reset();
+}, 30000).unref();
 
 const COMMAND_LIMIT_MS = 10000;
 
 client.on('interactionCreate', async (interaction) => {
   const label = interaction.isChatInputCommand() ? `/${interaction.commandName}` : interaction.isButton() ? `button ${interaction.customId.split(/[:|]/)[0]}` : interaction.type;
   const started = Date.now();
+  const age = started - interaction.createdTimestamp;
+  if (age > 1500) console.warn(`${label} was already ${age}ms old when it arrived (ws ping ${Math.round(client.ws.ping)}ms)`);
   const timer = setTimeout(async () => {
     console.error(`${label} still running after ${COMMAND_LIMIT_MS / 1000}s (deferred: ${interaction.deferred}, replied: ${interaction.replied})`);
     if (interaction.isRepliable() && interaction.deferred && !interaction.replied) {
-      await interaction.editReply({ content: 'That took too long. Try again in a moment.' }).catch(err => console.error(`${label} timeout notice failed:`, err.message));
+      const began = Date.now();
+      try {
+        const res = await fetch(`https://discord.com/api/v10/webhooks/${interaction.applicationId}/${interaction.token}/messages/@original`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: 'That took too long. Try again in a moment.', flags: 0 }),
+          signal: AbortSignal.timeout(8000)
+        });
+        console.error(`${label} plain request answered ${res.status} in ${Date.now() - began}ms`);
+      } catch (err) {
+        console.error(`${label} plain request failed after ${Date.now() - began}ms:`, err.name, err.message);
+      }
     }
   }, COMMAND_LIMIT_MS);
   try {
