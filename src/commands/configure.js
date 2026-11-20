@@ -111,14 +111,15 @@ export async function execute(interaction) {
       await interaction.reply({ content: 'Set a public channel first with `/configure public-channel`.', flags: MessageFlags.Ephemeral });
       return;
     }
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'Reindexing started. The result is posted here when it finishes.', flags: MessageFlags.Ephemeral });
+    const done = (content) => interaction.channel.send({ content, allowedMentions: { parse: [] } }).catch(err => console.error('reindex report failed:', err.message));
     try {
       const { added, skipped } = await backfill(channel, guildId, interaction.client.user.id);
       const numbered = await numberResources(guildId);
-      await interaction.editReply({ content: `Indexed **${added}** resource${added === 1 ? '' : 's'} from ${channel}${skipped ? ` (${skipped} already indexed)` : ''} and gave **${numbered}** a resource number.` });
+      await done(`Indexed **${added}** resource${added === 1 ? '' : 's'} from ${channel}${skipped ? ` (${skipped} already indexed)` : ''} and gave **${numbered}** a resource number.`);
     } catch (error) {
       console.error('Error reindexing resources:', error);
-      await interaction.editReply({ content: 'Could not read the public channel. Check that the bot can view it and read its history.' });
+      await done('Could not read the public channel. Check that the bot can view it and read its history.');
     }
   }
 }

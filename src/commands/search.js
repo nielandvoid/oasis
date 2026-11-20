@@ -64,9 +64,8 @@ export async function execute(interaction) {
     await interaction.reply({ ...notice('Give a `query`, some `tags`, or `*` to list everything.'), flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
     return;
   }
-  await interaction.deferReply();
   const view = await render(interaction.guild, query || '*', tags, 0);
-  await interaction.editReply({ flags: view.flags, components: view.components, files: [bannerFile()] });
+  await interaction.reply({ flags: view.flags, components: view.components, files: [bannerFile()] });
 }
 
 export async function paginate(interaction) {

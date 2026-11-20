@@ -46,9 +46,8 @@ export async function execute(interaction) {
   const action = interaction.options.getSubcommand();
 
   if (action === 'list') {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const view = await render(interaction.guild, userId, 0);
-    await interaction.editReply({ flags: MessageFlags.IsComponentsV2, components: view.components, files: [bannerFile()] });
+    await interaction.reply({ flags: view.flags, components: view.components, files: [bannerFile()] });
     return;
   }
 

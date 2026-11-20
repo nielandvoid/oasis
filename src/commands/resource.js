@@ -107,10 +107,9 @@ export async function execute(interaction) {
     return;
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const { thread, channel, message } = await locate(interaction.client, resource.post);
   if (!message) {
-    await interaction.editReply({ ...notice('The post could not be found. It may have been deleted; use `/resource unpublish` to remove it from search.'), flags: V2 });
+    await interaction.reply({ ...notice('The post could not be found. It may have been deleted; use `/resource unpublish` to remove it from search.'), flags: EPHEMERAL_V2 });
     return;
   }
 
@@ -121,15 +120,15 @@ export async function execute(interaction) {
   if (tagInput) {
     const names = [...new Set(tagInput.split(',').map(t => t.trim()).filter(Boolean))];
     if (channel.type !== ChannelType.GuildForum) {
-      await interaction.editReply({ ...notice('Tags can only be edited on resources published in a forum.'), flags: V2 });
+      await interaction.reply({ ...notice('Tags can only be edited on resources published in a forum.'), flags: EPHEMERAL_V2 });
       return;
     }
     const found = names.map(name => channel.availableTags.find(t => t.name.toLowerCase() === name.toLowerCase()));
     const missing = names.filter((_, i) => !found[i]);
     if (missing.length || names.length > MAX_TAGS) {
-      await interaction.editReply({
+      await interaction.reply({
         ...notice(missing.length ? `Unknown tag${missing.length > 1 ? 's' : ''}: ${missing.map(t => `\`${t}\``).join(', ')}. Pick from the suggestions.` : `A resource can have at most ${MAX_TAGS} tags.`),
-        flags: V2
+        flags: EPHEMERAL_V2
       });
       return;
     }
@@ -162,12 +161,12 @@ export async function execute(interaction) {
     }
   } catch (error) {
     console.error('Error editing resource post:', error);
-    await interaction.editReply({ ...notice('Could not edit the post. Check that the bot can manage it.'), flags: V2 });
+    await interaction.reply({ ...notice('Could not edit the post. Check that the bot can manage it.'), flags: EPHEMERAL_V2 });
     return;
   }
 
   await updateResource(id, { ...changes, ...(upgrade ?? {}) });
-  await interaction.editReply({ ...notice(`Updated **${escapeMd(next.title)}**${resource.publishedUrl ? `: ${resource.publishedUrl}` : ''}`), flags: V2 });
+  await interaction.reply({ ...notice(`Updated **${escapeMd(next.title)}**${resource.publishedUrl ? `: ${resource.publishedUrl}` : ''}`), flags: EPHEMERAL_V2 });
 }
 
 export async function handleUnpublish(interaction) {

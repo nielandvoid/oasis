@@ -22,9 +22,8 @@ export async function execute(interaction) {
     await interaction.reply({ ...notice('This command can only be used in a server.'), flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
     return;
   }
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const view = await render(interaction.guild, interaction.user.id, 0);
-  await interaction.editReply({ flags: view.flags & ~MessageFlags.Ephemeral, components: view.components, files: [bannerFile()] });
+  await interaction.reply({ flags: view.flags, components: view.components, files: [bannerFile()] });
 }
 
 export async function paginate(interaction) {

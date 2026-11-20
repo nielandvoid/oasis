@@ -27,7 +27,6 @@ export async function execute(interaction) {
     await interaction.reply({ ...notice('This command can only be used in a server.'), flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2 });
     return;
   }
-  await interaction.deferReply();
   const resources = await listResources(interaction.guild.id);
   const all = rank(resources);
   const rows = all.slice(0, TOP);
@@ -40,5 +39,5 @@ export async function execute(interaction) {
     total: resources.length,
     viewer: at >= 0 ? { rank: at + 1, count: all[at].count } : null
   });
-  await interaction.editReply({ ...view, files: [bannerFile()] });
+  await interaction.reply({ ...view, files: [bannerFile()] });
 }

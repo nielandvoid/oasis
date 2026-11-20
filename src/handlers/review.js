@@ -67,6 +67,8 @@ export async function handleInteraction(interaction) {
   }
 }
 
+// the interaction webhook can be throttled on shared hosts, so notices go through the channel
+const tell = (interaction, content) => interaction.channel?.send({ content: `${interaction.user}: ${content}`, allowedMentions: { parse: [] } }).catch(err => console.error('notice failed:', err.message));
 const iconOf = (interaction) => interaction.guild?.iconURL({ extension: 'png', size: 256 });
 const canReview = (interaction) => interaction.member?.permissions?.has(PermissionFlagsBits.ManageMessages);
 
@@ -211,10 +213,7 @@ async function handleDescSubmit(interaction, type, draftId) {
     }
   } catch (error) {
     console.error('Error sending submission to review channel:', error);
-    await interaction.followUp({
-      content: 'Error: Failed to deliver your submission to the moderators. Please try again.',
-      flags: MessageFlags.Ephemeral
-    }).catch(() => null);
+    await tell(interaction, 'Error: Failed to deliver your submission to the moderators. Please try again.');
   }
 }
 
@@ -243,7 +242,7 @@ async function handleApprove(interaction) {
   } else {
     sub = await claimSubmission(messageId);
     if (!sub) {
-      await interaction.followUp({ content: 'This submission was already handled, or its data could not be found.', flags: MessageFlags.Ephemeral });
+      await tell(interaction, 'This submission was already handled, or its data could not be found.');
       return;
     }
   }
@@ -259,7 +258,7 @@ async function handleApprove(interaction) {
 
   if (!publicChannel) {
     await release();
-    await interaction.followUp({ content: 'Error: Public channel not found. Could not publish.', flags: MessageFlags.Ephemeral });
+    await tell(interaction, 'Error: Public channel not found. Could not publish.');
     return;
   }
 
@@ -323,7 +322,7 @@ async function handleApprove(interaction) {
     } catch (fallbackError) {
       console.error('Error publishing resource:', fallbackError);
       await release();
-      await interaction.followUp({ content: 'Failed to publish to the public channel. Check bot permissions.', flags: MessageFlags.Ephemeral });
+      await tell(interaction, 'Failed to publish to the public channel. Check bot permissions.');
       return;
     }
   }
@@ -354,10 +353,10 @@ async function handleApprove(interaction) {
   }
 
   if (legacy) {
-    await interaction.editReply({ embeds: [legacyApproved(interaction.message.embeds[0], interaction.user.tag)], components: [] });
+    await interaction.message.edit({ embeds: [legacyApproved(interaction.message.embeds[0], interaction.user.tag)], components: [] });
     await recordPublished(messageId, { ...reviewed, guildId: interaction.guildId, publishedUrl, post, reviewedBy: interaction.user.id });
   } else {
-    await interaction.editReply(reviewView(reviewed, { status: 'approved', by: interaction.user.tag }));
+    await interaction.message.edit(reviewView(reviewed, { status: 'approved', by: interaction.user.tag }));
     await finishSubmission(messageId, 'approved', { publishedUrl, post, reviewedBy: interaction.user.id, files: reviewed.files });
   }
 }
@@ -397,7 +396,7 @@ async function handleRejectSubmit(interaction, messageId) {
   const reason = interaction.fields.getTextInputValue('reject-reason');
   const originalMessage = await interaction.channel.messages.fetch(messageId).catch(() => null);
   if (!originalMessage) {
-    await interaction.followUp({ content: 'Original review message could not be found.', flags: MessageFlags.Ephemeral });
+    await tell(interaction, 'Original review message could not be found.');
     return;
   }
 
@@ -408,7 +407,7 @@ async function handleRejectSubmit(interaction, messageId) {
   } else {
     sub = await claimSubmission(messageId);
     if (!sub) {
-      await interaction.followUp({ content: 'This submission was already handled, or its data could not be found.', flags: MessageFlags.Ephemeral });
+      await tell(interaction, 'This submission was already handled, or its data could not be found.');
       return;
     }
   }
