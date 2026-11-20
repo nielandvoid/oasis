@@ -232,7 +232,7 @@ const navRow = (pages, at, id) => (pages.length > 1 ? [new ActionRowBuilder().ad
 function searchEntry(r) {
   const description = clip(String(r.description ?? '').replace(/\s+/g, ' ').trim(), 220);
   const files = r.files ?? [];
-  const names = files.slice(0, 3).map(f => escapeMd(f.name)).join(', ') + (files.length > 3 ? ` and ${files.length - 3} more` : '');
+  const names = files.slice(0, 3).map(f => (f.url ? `[${linkText(f.name)}](${f.url})` : escapeMd(f.name))).join(', ') + (files.length > 3 ? ` and ${files.length - 3} more` : '');
   const lines = [
     `### [${linkText(clip(r.title, 100))}](${r.publishedUrl})${idTag(r)}`,
     ...(description ? [quote(escapeMd(description))] : []),

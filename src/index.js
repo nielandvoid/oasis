@@ -69,7 +69,20 @@ client.once(Events.ClientReady, async () => {
   }
 });
 
+client.rest.on('rateLimited', (info) => console.warn(`discord rate limit: ${info.method} ${info.route} waits ${info.timeToReset}ms (global: ${info.global})`));
+console.log(`node ${process.version}`);
+
+const COMMAND_LIMIT_MS = 10000;
+
 client.on('interactionCreate', async (interaction) => {
+  const label = interaction.isChatInputCommand() ? `/${interaction.commandName}` : interaction.isButton() ? `button ${interaction.customId.split(/[:|]/)[0]}` : interaction.type;
+  const started = Date.now();
+  const timer = setTimeout(async () => {
+    console.error(`${label} still running after ${COMMAND_LIMIT_MS / 1000}s (deferred: ${interaction.deferred}, replied: ${interaction.replied})`);
+    if (interaction.isRepliable() && interaction.deferred && !interaction.replied) {
+      await interaction.editReply({ content: 'That took too long. Try again in a moment.' }).catch(err => console.error(`${label} timeout notice failed:`, err.message));
+    }
+  }, COMMAND_LIMIT_MS);
   try {
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === 'submit') {
@@ -110,12 +123,15 @@ client.on('interactionCreate', async (interaction) => {
 
     await handleInteraction(interaction);
   } catch (error) {
-    console.error('Error handling interaction:', error);
+    console.error(`${label} failed after ${Date.now() - started}ms:`, error);
 
     if (interaction.isRepliable()) {
       const msg = { content: 'An error occurred while executing this action.', flags: MessageFlags.Ephemeral };
       await (interaction.deferred || interaction.replied ? interaction.followUp(msg) : interaction.reply(msg)).catch(() => null);
     }
+  } finally {
+    clearTimeout(timer);
+    if (Date.now() - started > 3000) console.log(`${label} finished in ${Date.now() - started}ms`);
   }
 });
 
